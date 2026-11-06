@@ -175,7 +175,10 @@ function dibujarCuadricula(ctx, r, op, T, y0, yMax){
 // ---------- ventana con vista previa y botones ----------
 function ventanaImagen(r){
   // Primero lo guardado en la rifa (se sincroniza entre equipos); si no hay, lo último usado en este equipo.
-  const pref = { plantilla:'progreso', tema:'morado', contarApartados:true, mostrar:'pct', contacto:'', ...leerPrefImagen(), ...(r.imagen || {}) };
+  // Solo cuenta lo que el usuario cambió a mano (manual: true); si no, se usa el diseño por defecto (negro y dorado).
+  const local = leerPrefImagen();
+  const elegido = (r.imagen && r.imagen.manual) ? r.imagen : (local.manual ? local : {});
+  const pref = { plantilla:'progreso', tema:'dorado', contarApartados:true, mostrar:'pct', contacto: local.contacto || '', ...elegido };
   const nativo = window.rifasNativo && window.rifasNativo.guardarImagen;
   const sh = modal(`<h2>Imagen para estados</h2>
     <div class="img-ed">
@@ -205,8 +208,15 @@ function ventanaImagen(r){
     plantilla: form.plantilla.value, tema: form.tema.value, mostrar: form.mostrar.value,
     contarApartados: form.contarApartados.checked, contacto: form.contacto.value.trim()
   });
-  const redibujar = () => {
-    const op = opciones(); guardarPrefImagen(op);
+  const redibujar = (manual) => {
+    const op = opciones();
+    sh.querySelector('[data-solo="progreso"]').style.display = op.plantilla === 'progreso' ? '' : 'none';
+    dibujarImagen(cv, r, op);
+    blob = null; clearTimeout(pend);
+    // Se prepara el archivo de una vez para que "Compartir" funcione al primer toque en el iPhone.
+    pend = setTimeout(() => cv.toBlob(b => { blob = b; }, 'image/png'), 50);
+    if(manual !== true) return; // al abrir la ventana no se guarda nada
+    op.manual = true; guardarPrefImagen(op);
     // Guardar el diseño en la rifa (una sola escritura cuando dejas de cambiar cosas).
     clearTimeout(pendGuardar);
     pendGuardar = setTimeout(async () => {
@@ -214,14 +224,9 @@ function ventanaImagen(r){
       if(j === guardado) return;
       try{ await S.db.doc(`rifas/${r.id}`).update({ imagen: op }); guardado = j; }catch(e){}
     }, 600);
-    sh.querySelector('[data-solo="progreso"]').style.display = op.plantilla === 'progreso' ? '' : 'none';
-    dibujarImagen(cv, r, op);
-    blob = null; clearTimeout(pend);
-    // Se prepara el archivo de una vez para que "Compartir" funcione al primer toque en el iPhone.
-    pend = setTimeout(() => cv.toBlob(b => { blob = b; }, 'image/png'), 50);
   };
-  form.addEventListener('input', redibujar); form.addEventListener('change', redibujar);
-  redibujar();
+  form.addEventListener('input', () => redibujar(true)); form.addEventListener('change', () => redibujar(true));
+  redibujar(false);
 
   const nombreArchivo = () => `estado-${r.nombre.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')}.png`;
   const conBlob = async () => blob || await new Promise(res => cv.toBlob(res, 'image/png'));
