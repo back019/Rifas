@@ -1,0 +1,15 @@
+{
+  "name": "app-rifas",
+  "version": "1.0.0",
+  "description": "App para llevar el control de rifas (escritorio, luego teléfono)",
+  "main": "main.js",
+  "author": "Yixon",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^45.0.0"
+  }
+}
