@@ -7,6 +7,7 @@ function crearVentana() {
   const win = new BrowserWindow({
     width: 1200, height: 800, minWidth: 380, minHeight: 600,
     title: 'Rifas — Control',
+    icon: path.join(__dirname, 'src', 'iconos', 'icono-512.png'),
     backgroundColor: '#f4f5f7',
     autoHideMenuBar: true,
     webPreferences: {
@@ -56,6 +57,12 @@ ipcMain.handle('copiar-imagen', async (ev, bytes) => {
   clipboard.writeImage(nativeImage.createFromBuffer(Buffer.from(bytes)));
   return true;
 });
+
+// Siempre la misma carpeta de datos (la que usaba iniciar.bat), así el programa instalado ve las mismas rifas.
+app.setPath('userData', path.join(app.getPath('appData'), 'app-rifas'));
+// Una sola ventana: si ya está abierta, se trae al frente.
+if (!app.requestSingleInstanceLock()) { app.quit(); }
+app.on('second-instance', () => { const w = BrowserWindow.getAllWindows()[0]; if (w) { if (w.isMinimized()) w.restore(); w.focus(); } });
 
 Menu.setApplicationMenu(null);
 app.whenReady().then(() => {

@@ -2,7 +2,11 @@
 
 App para llevar el control de rifas. Por ahora es para la computadora; está pensada para pasarla después al teléfono.
 
-## Cómo abrirla
+## Instalarla como programa (recomendado)
+Ejecuta `Instalar-Rifas-1.0.0.exe`. Crea el acceso directo "Rifas" en el escritorio y en el menú Inicio. Usa la misma carpeta de datos que `iniciar.bat`, así que ves las mismas rifas.
+Para crear un instalador nuevo después de cambios: doble clic en `crear-instalador.bat` (queda en la carpeta `dist`).
+
+## Cómo abrirla (modo desarrollo)
 1. Necesitas Node.js (versión LTS) instalado: https://nodejs.org
 2. Haz doble clic en `iniciar.bat`.
    - La primera vez instala Electron (tarda unos minutos y necesita internet).

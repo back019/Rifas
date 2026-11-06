@@ -7,9 +7,56 @@
   "license": "UNLICENSED",
   "private": true,
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "instalador": "electron-builder --win nsis --x64"
   },
   "devDependencies": {
-    "electron": "^45.0.0"
+    "electron": "^45.0.0",
+    "electron-builder": "^26.0.0",
+    "resedit": "^2.0.0"
+  },
+  "productName": "Rifas",
+  "build": {
+    "appId": "com.yixon.rifas",
+    "productName": "Rifas",
+    "copyright": "Yixon Belandria",
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json",
+      "src/**/*"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "afterPack": "build/poner-icono.js",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Rifas",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Instalar-Rifas-${version}.exe",
+      "language": "3082"
+    },
+    "publish": null
   }
 }
