@@ -729,12 +729,12 @@ function botonSync(){
 function ventanaSync(){
   const e = S.sync.estado(); const c = e.cfg || {};
   const sh = modal(`<h2>Sincronizar</h2>
-    <p class="muted">Conecta la app a un servidor CouchDB (por ejemplo IBM Cloudant) para tener las mismas rifas en la computadora y en el teléfono. Sin internet sigue funcionando y se pone al día cuando vuelva la conexión.</p>
+    <p class="muted">Conecta la app a tu servidor CouchDB (en tu PC con Tailscale, o en la nube) para tener las mismas rifas en la computadora y en el teléfono. Sin internet sigue funcionando y se pone al día cuando vuelva la conexión.</p>
     <div class="card" style="margin-bottom:12px"><div class="row"><i class="dot big ${esc(e.estado)}"></i><b class="grow">${esc(SYNC_TXT[e.estado]||e.estado)}</b></div>
       ${e.detalle?`<div class="muted" style="font-size:13px;margin-top:4px">${esc(e.detalle)}</div>`:''}
       ${e.ultimo?`<div class="muted" style="font-size:13px;margin-top:4px">Último cambio sincronizado: ${esc(fmtFechaHora(e.ultimo))}</div>`:''}</div>
     <form id="fSync">
-      <label class="f"><span>Dirección del servidor</span><input type="text" name="url" required placeholder="https://xxxx.cloudantnosqldb.appdomain.cloud" value="${esc(c.url||'')}" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+      <label class="f"><span>Dirección del servidor</span><input type="text" name="url" required placeholder="https://tu-pc.tailxxxx.ts.net" value="${esc(c.url||'')}" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
       <label class="f"><span>Nombre de la base</span><input type="text" name="base" value="${esc(c.base||'rifas')}" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
       <div class="two">
         <label class="f"><span>Usuario</span><input type="text" name="usuario" value="${esc(c.usuario||'')}" autocapitalize="off" autocorrect="off" spellcheck="false"></label>

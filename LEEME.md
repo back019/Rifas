@@ -34,4 +34,4 @@ Para tener una copia usa el botón "Respaldo" y guarda el archivo .json en otro 
 La carpeta `src/` también es una app web instalable (PWA). Se publica gratis en GitHub Pages con `publicar.bat` y en el teléfono se agrega a la pantalla de inicio. Los pasos completos están en `GUIA-IPHONE.md`.
 
 ## Sincronizar computadora y teléfono
-El botón de la nube conecta la app a un servidor CouchDB (por ejemplo IBM Cloudant, que tiene plan gratis). La sincronización va en los dos sentidos y aguanta estar sin internet. La configuración se guarda en el documento `_local/sync`, que no se copia al servidor.
+El botón de la nube conecta la app a un servidor CouchDB. La opción gratis y sin tarjeta es CouchDB en esta PC más Tailscale: ver `GUIA-SINCRONIZAR.md` y la carpeta `servidor/` (configurar-couchdb.bat y activar-tailscale.bat). La sincronización va en los dos sentidos y aguanta estar sin internet. La configuración se guarda en el documento `_local/sync`, que no se copia al servidor.

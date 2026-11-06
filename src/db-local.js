@@ -151,7 +151,7 @@
         const st = e && e.status;
         if (st === 401 || st === 403) throw new Error('Usuario o clave incorrectos, o sin permiso sobre la base.');
         if (st === 404) throw new Error('No existe la base "' + (cfg.base || 'rifas') + '" en el servidor. Créala primero.');
-        throw new Error('No se pudo conectar. Revisa la dirección, tu internet y que el servidor tenga CORS activado.');
+        throw new Error('No se pudo conectar. Revisa la dirección, que la PC con CouchDB esté prendida y que Tailscale esté conectado en este equipo.');
       }
       await guardarCfg(cfg);
       arrancar(cfg);
