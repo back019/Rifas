@@ -13,7 +13,21 @@
   }
   // En el teléfono (servida por https) se registra el service worker para que abra sin internet.
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
-    navigator.serviceWorker.register('sw.js').catch(e => console.warn('Service worker:', e));
+    const habiaControl = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+      // Busca actualizaciones al abrir y cada vez que la app vuelve a primer plano.
+      const buscar = () => reg.update().catch(() => {});
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') buscar(); });
+      buscar();
+    }).catch(e => console.warn('Service worker:', e));
+    // Cuando se instala una versión nueva, recarga una vez para usarla.
+    let recargado = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!habiaControl || recargado) return;
+      recargado = true;
+      if (!document.querySelector('#modal:not([hidden])')) location.reload();
+      else toast('Hay una versión nueva. Cierra y abre la app para usarla.');
+    });
   }
 })();
 
