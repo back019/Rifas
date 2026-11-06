@@ -1,5 +1,5 @@
 // Proceso principal de Electron: crea la ventana y maneja guardar archivos y abrir enlaces.
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, clipboard, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 
@@ -36,6 +36,24 @@ ipcMain.handle('guardar-archivo', async (ev, nombre, contenido) => {
   });
   if (canceled || !filePath) return false;
   await fs.writeFile(filePath, String(contenido), 'utf8');
+  return true;
+});
+
+// Guardar la imagen para estados (PNG).
+ipcMain.handle('guardar-imagen', async (ev, nombre, bytes) => {
+  const win = BrowserWindow.fromWebContents(ev.sender);
+  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    defaultPath: path.join(app.getPath('pictures'), String(nombre).replace(/[\\/:*?"<>|]/g, '-')),
+    filters: [{ name: 'Imagen PNG', extensions: ['png'] }]
+  });
+  if (canceled || !filePath) return false;
+  await fs.writeFile(filePath, Buffer.from(bytes));
+  return true;
+});
+
+// Copiar la imagen al portapapeles (para pegarla en WhatsApp Web con Ctrl+V).
+ipcMain.handle('copiar-imagen', async (ev, bytes) => {
+  clipboard.writeImage(nativeImage.createFromBuffer(Buffer.from(bytes)));
   return true;
 });
 

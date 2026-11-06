@@ -24,6 +24,7 @@ Para tener una copia usa el botón "Respaldo" y guarda el archivo .json en otro 
 - `main.js`: crea la ventana de Electron, guarda archivos y abre los enlaces de WhatsApp en el navegador.
 - `preload.js`: puente seguro entre la página y Electron.
 - `src/index.html`, `src/styles.css`, `src/app.js`: la interfaz y la lógica de la app.
+- `src/imagen.js`: genera la imagen para estados (progreso o números libres).
 - `src/inicio-local.js`: arranca la app con la base local y registra el service worker en el teléfono.
 - `src/manifest.webmanifest`, `src/sw.js`, `src/iconos/`: lo necesario para instalarla como app y que abra sin internet.
 - `publicar.bat` y `config-github/pages.yml`: suben el proyecto a GitHub y publican `src/` en GitHub Pages (el .bat copia `pages.yml` a `.github/workflows/`).

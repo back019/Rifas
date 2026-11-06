@@ -99,3 +99,9 @@ fieldset.abono legend{font-size:13px;color:var(--muted);padding:0 4px}
 .dot.error{background:var(--danger)}
 @media (max-width:520px){header.top{gap:6px;padding:8px}header.top .btn{padding:8px 10px}header.top h1{font-size:16px}}
 @media (max-width:520px){header.top .lbl{display:none}}
+.sheet.ancho{max-width:900px}
+.img-ed{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+.img-prev{background:var(--libre);border-radius:12px;padding:10px;display:flex;justify-content:center}
+.img-prev canvas{width:100%;max-width:340px;height:auto;border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,.18)}
+@media (max-width:640px){.img-ed{grid-template-columns:1fr}.img-prev canvas{max-width:260px}}
+.sheet.ancho .acts{position:sticky;bottom:calc(-16px - env(safe-area-inset-bottom));background:var(--card);margin:12px -16px calc(-16px - env(safe-area-inset-bottom));padding:10px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}

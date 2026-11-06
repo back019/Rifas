@@ -2,7 +2,7 @@
 // Cuando cambies algún archivo, sube el número de VERSION para que el teléfono baje lo nuevo.
 const VERSION = 'rifas-v3';
 const ARCHIVOS = [
-  './', './index.html', './styles.css', './app.js', './db-local.js', './inicio-local.js',
+  './', './index.html', './styles.css', './app.js', './imagen.js', './db-local.js', './inicio-local.js',
   './vendor/pouchdb.min.js', './manifest.webmanifest',
   './iconos/icono-192.png', './iconos/icono-512.png', './iconos/apple-touch-icon.png', './iconos/favicon.png'
 ];

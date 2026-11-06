@@ -208,7 +208,7 @@ function renderTop(){
   if(!S.rifaId || !r){
     t.innerHTML = `<h1>🎟️ Rifas</h1>${S.dbListo?`${botonSync()}<button class="btn" id="bTasas" title="Tasas">💱<span class="lbl"> Tasas</span></button>${S.respaldo?'<button class="btn" id="bRespaldo" title="Respaldo">💾<span class="lbl"> Respaldo</span></button>':''}<button class="btn pri" id="bNueva" title="Nueva rifa">+<span class="lbl"> Nueva</span></button>`:''}`;
   } else {
-    t.innerHTML = `<button class="btn icon" id="bAtras" aria-label="Volver">←</button><h1>${esc(r.nombre)}</h1><button class="btn" id="bTasas" title="Tasas">💱<span class="lbl"> Tasas</span></button><button class="btn icon" id="bEditar" aria-label="Editar rifa">⚙️</button>`;
+    t.innerHTML = `<button class="btn icon" id="bAtras" aria-label="Volver">←</button><h1>${esc(r.nombre)}</h1><button class="btn" id="bImagen" title="Imagen para estados">🖼️<span class="lbl"> Imagen</span></button><button class="btn" id="bTasas" title="Tasas">💱<span class="lbl"> Tasas</span></button><button class="btn icon" id="bEditar" aria-label="Editar rifa">⚙️</button>`;
   }
 }
 function lineaPremios(r){
@@ -371,6 +371,7 @@ function tabResumen(r){
   h += `<div class="card" style="margin-top:12px"><b>Participantes por premio</b><table class="det" style="margin-top:6px">${premiosOrden(r).map(p=>`<tr><td>${esc(p.nombre)}${p.fecha?' · '+esc(fmtFecha(p.fecha)):''}</td><td>${lista.filter(d=>juega(p,d)).length} número(s) con ${p.requisito}% o más</td></tr>`).join('')}</table></div>`;
   h += `<div class="card" style="margin-top:12px"><b>Compartir y exportar</b>
     <div class="row" style="margin-top:10px">
+      <button class="btn pri" id="bImagen2">🖼️ Imagen para estados</button>
       <button class="btn" id="bCopLibres">Copiar números libres</button>
       <a class="btn" href="https://wa.me/?text=${encodeURIComponent(textoLibres(r))}" target="_blank" rel="noopener">Enviar libres por WhatsApp</a>
       <button class="btn" id="bCSV">Exportar a Excel (CSV)</button>
@@ -793,6 +794,7 @@ document.addEventListener('click', async ev => {
   if(t.id==='bRespaldo') return ventanaRespaldo();
   if(t.id==='bTasas') return ventanaTasas();
   if(t.id==='bSync') return ventanaSync();
+  if(t.id==='bImagen' || t.id==='bImagen2') return ventanaImagen(rifa());
   if(t.dataset.abrir) return abrirRifa(t.dataset.abrir);
   if(t.id==='bAtras') return salirRifa();
   if(t.id==='bEditar') return formRifa(r);
