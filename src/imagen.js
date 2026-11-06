@@ -174,7 +174,8 @@ function dibujarCuadricula(ctx, r, op, T, y0, yMax){
 
 // ---------- ventana con vista previa y botones ----------
 function ventanaImagen(r){
-  const pref = { plantilla:'progreso', tema:'morado', contarApartados:true, mostrar:'pct', contacto:'', ...leerPrefImagen() };
+  // Primero lo guardado en la rifa (se sincroniza entre equipos); si no hay, lo último usado en este equipo.
+  const pref = { plantilla:'progreso', tema:'morado', contarApartados:true, mostrar:'pct', contacto:'', ...leerPrefImagen(), ...(r.imagen || {}) };
   const nativo = window.rifasNativo && window.rifasNativo.guardarImagen;
   const sh = modal(`<h2>Imagen para estados</h2>
     <div class="img-ed">
@@ -198,13 +199,21 @@ function ventanaImagen(r){
     </div>`);
   sh.classList.add('ancho');
   const cv = sh.querySelector('#cvImg'); const form = sh.querySelector('#fImg');
-  let blob = null, pend = null;
+  let blob = null, pend = null, pendGuardar = null;
+  let guardado = JSON.stringify(r.imagen || null);
   const opciones = () => ({
     plantilla: form.plantilla.value, tema: form.tema.value, mostrar: form.mostrar.value,
     contarApartados: form.contarApartados.checked, contacto: form.contacto.value.trim()
   });
   const redibujar = () => {
     const op = opciones(); guardarPrefImagen(op);
+    // Guardar el diseño en la rifa (una sola escritura cuando dejas de cambiar cosas).
+    clearTimeout(pendGuardar);
+    pendGuardar = setTimeout(async () => {
+      const j = JSON.stringify(op);
+      if(j === guardado) return;
+      try{ await S.db.doc(`rifas/${r.id}`).update({ imagen: op }); guardado = j; }catch(e){}
+    }, 600);
     sh.querySelector('[data-solo="progreso"]').style.display = op.plantilla === 'progreso' ? '' : 'none';
     dibujarImagen(cv, r, op);
     blob = null; clearTimeout(pend);
