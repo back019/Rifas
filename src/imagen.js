@@ -43,7 +43,8 @@ const TEMAS = {
   morado: { a:'#4f46e5', b:'#7c3aed', acento:'#fbbf24', texto:'#ffffff' },
   verde:  { a:'#047857', b:'#0f766e', acento:'#fde047', texto:'#ffffff' },
   rojo:   { a:'#b91c1c', b:'#be185d', acento:'#fde047', texto:'#ffffff' },
-  negro:  { a:'#111827', b:'#1f2937', acento:'#f59e0b', texto:'#ffffff' }
+  negro:  { a:'#111827', b:'#1f2937', acento:'#f59e0b', texto:'#ffffff' },
+  dorado: { a:'#0a0a0a', b:'#292524', acento:'#e5b53a', texto:'#ffffff', nombre:'Negro y dorado' }
 };
 
 // Dibuja la imagen en el canvas. op: { plantilla, tema, contarApartados, mostrar ('pct'|'cant'), contacto }
@@ -185,7 +186,7 @@ function ventanaImagen(r){
         <label class="f" data-solo="progreso"><span>Mostrar</span><select name="mostrar">
           <option value="pct" ${pref.mostrar!=='cant'?'selected':''}>Porcentaje (50%)</option>
           <option value="cant" ${pref.mostrar==='cant'?'selected':''}>Cantidad (50 de 100)</option></select></label>
-        <label class="f"><span>Color</span><select name="tema">${Object.keys(TEMAS).map(k=>`<option value="${k}" ${pref.tema===k?'selected':''}>${k[0].toUpperCase()+k.slice(1)}</option>`).join('')}</select></label>
+        <label class="f"><span>Color</span><select name="tema">${Object.keys(TEMAS).map(k=>`<option value="${k}" ${pref.tema===k?'selected':''}>${TEMAS[k].nombre || (k[0].toUpperCase()+k.slice(1))}</option>`).join('')}</select></label>
         <label class="row" style="margin-bottom:10px"><input type="checkbox" name="contarApartados" ${pref.contarApartados?'checked':''}> Contar los apartados como vendidos</label>
         <label class="f"><span>Texto de contacto (opcional)</span><input type="text" name="contacto" value="${esc(pref.contacto)}" placeholder="Escríbeme al 0414-1234567"></label>
       </form>
