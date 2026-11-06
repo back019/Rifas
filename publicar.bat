@@ -24,6 +24,9 @@ echo Ejemplo: https://github.com/tu-usuario/rifas.git
 set /p REPO=Direccion: 
 git init -b main
 git remote add origin %REPO%
+rem Si el repositorio ya tiene archivos, se toma su historial sin tocar los archivos de esta carpeta
+git fetch origin main >nul 2>nul
+if not errorlevel 1 git reset origin/main >nul
 
 :subir
 rem El archivo de publicacion de GitHub Pages va en .github\workflows
