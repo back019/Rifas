@@ -287,7 +287,7 @@ function render(){
   if(!S.dbListo && !S.iniciado){ app.innerHTML = h + '<p class="muted">Cargando…</p>'; return; }
   if(!S.dbListo){ app.innerHTML = h + `<div class="card empty"><h3>No se pudo abrir la base de datos</h3><p class="muted">Cierra la app y vuelve a abrirla.</p></div>`; $('#multibar').innerHTML=''; return; }
   if(!S.rifasCargadas){ app.innerHTML = h + '<p class="muted">Cargando rifas…</p>'; return; }
-  h += S.rifaId ? vistaRifa() : vistaLista();
+  h += S.rifaId ? vistaRifa() : avisoRespaldo() + vistaLista();
   app.innerHTML = h;
   renderMultibar();
 }
@@ -931,17 +931,43 @@ function ventanaSync(){
 }
 
 // ---------- respaldo (solo si la plataforma lo ofrece) ----------
+function textoAuto(){
+  const u = S.respaldo && S.respaldo.auto && S.respaldo.auto.ultimo();
+  return u ? `Último respaldo automático: ${esc(fmtFechaHora(u.fecha))}` : 'Todavía no se ha hecho el primer respaldo automático (se hace unos segundos después de abrir la app).';
+}
+// En el teléfono sin sincronizar no hay respaldo automático: se recuerda guardar uno cada semana.
+function avisoRespaldo(){
+  if(!S.respaldo || S.respaldo.auto || !S.rifas.length) return '';
+  if(S.sync && S.sync.estado().cfg) return '';
+  const u = S.respaldo.ultimoManual();
+  if(u && Date.now() - new Date(u).getTime() < 7*864e5) return '';
+  return `<div class="banner">💾 ${u ? 'Hace más de una semana que no guardas un respaldo' : 'Todavía no has guardado un respaldo'} en este equipo. <button class="btn sm" id="bRespaldo2">Guardar respaldo</button></div>`;
+}
 function ventanaRespaldo(){
   const sh = modal(`<h2>Respaldo</h2>
     <p class="muted">Guarda una copia de todas tus rifas en un archivo. Con ese archivo puedes recuperarlas en esta u otra computadora.</p>
     <div class="acts" style="justify-content:flex-start"><button class="btn pri" id="rExp">Guardar respaldo</button>
     <label class="btn">Cargar respaldo<input type="file" id="rImp" accept=".json,application/json" hidden></label></div>
     <div id="rMsg" class="muted" style="margin-top:10px"></div>
+    ${S.respaldo.auto ? `<div class="card" style="margin-top:12px"><b>Respaldo automático</b>
+      <p class="muted" style="font-size:13px;margin:4px 0 8px">Esta computadora guarda sola una copia cada día (al abrir la app y cada 30 minutos si hubo cambios) en Documentos › "Rifas - respaldos". Se guardan los últimos 14 días.</p>
+      <div class="muted" style="font-size:13px" id="rAutoTxt">${textoAuto()}</div>
+      <div class="row" style="margin-top:8px"><button class="btn sm" id="rAutoYa">Hacer respaldo ahora</button><button class="btn sm" id="rAutoDir">Abrir carpeta</button></div></div>`
+      : `<p class="muted" style="font-size:13px;margin-top:10px">${S.respaldo.ultimoManual() ? 'Último respaldo guardado en este equipo: ' + esc(fmtFechaHora(S.respaldo.ultimoManual())) : 'En este equipo todavía no has guardado un respaldo.'}${S.sync && S.sync.estado().cfg ? ' Como está sincronizado, la PC también guarda los respaldos automáticos.' : ''}</p>`}
     <div class="acts"><button class="btn" data-x>Cerrar</button></div>`);
+  const ya = sh.querySelector('#rAutoYa');
+  if(ya) ya.onclick = async () => {
+    ya.disabled = true;
+    try{ await S.respaldo.auto.ahora(); sh.querySelector('#rAutoTxt').innerHTML = textoAuto(); toast('Respaldo guardado'); }
+    catch(e){ toast('No se pudo guardar el respaldo'); }
+    ya.disabled = false;
+  };
+  const dir = sh.querySelector('#rAutoDir');
+  if(dir) dir.onclick = () => S.respaldo.auto.abrirCarpeta();
   sh.querySelector('#rExp').onclick = async () => {
     const datos = await S.respaldo.exportar();
     const f = new Date().toISOString().slice(0,10);
-    if(S.downloads){ try{ const ok = await S.downloads.save({ filename:`respaldo-rifas-${f}.json`, data: JSON.stringify(datos, null, 1) }); if(ok !== false) sh.querySelector('#rMsg').textContent = 'Respaldo guardado.'; return; }catch(e){} }
+    if(S.downloads){ try{ const ok = await S.downloads.save({ filename:`respaldo-rifas-${f}.json`, data: JSON.stringify(datos, null, 1) }); if(ok !== false){ sh.querySelector('#rMsg').textContent = 'Respaldo guardado.'; S.respaldo.marcarManual(); render(); } return; }catch(e){} }
     copiar(JSON.stringify(datos));
   };
   sh.querySelector('#rImp').onchange = async ev => {
@@ -961,7 +987,7 @@ document.addEventListener('click', async ev => {
   const t = ev.target.closest('button, [data-abrir]'); if(!t) return;
   const r = rifa();
   if(t.id==='bNueva' || t.id==='bNueva2') return formRifa();
-  if(t.id==='bRespaldo') return ventanaRespaldo();
+  if(t.id==='bRespaldo' || t.id==='bRespaldo2') return ventanaRespaldo();
   if(t.id==='bTasas') return ventanaTasas();
   if(t.id==='bSync') return ventanaSync();
   if(t.id==='bHist') return ventanaHistorial(S.rifaId);
@@ -1036,6 +1062,10 @@ document.addEventListener('input', ev => {
 // sync: {estado, alCambiar, configurar, desactivar} o null
 function iniciarApp(db, downloads, respaldo, sync){
   S.iniciado = true; S.db = db; S.downloads = downloads || null; S.respaldo = respaldo || null; S.sync = sync || null;
+  if(S.respaldo){
+    S.respaldo.ultimoManual = () => { try{ return localStorage.getItem('respaldoManual') || ''; }catch(e){ return ''; } };
+    S.respaldo.marcarManual = () => { try{ localStorage.setItem('respaldoManual', nowISO()); }catch(e){} };
+  }
   if(S.sync) S.sync.alCambiar(() => renderTop());
   if(S.db){ S.dbListo = true; render(); iniciarDB(); } else render();
 }

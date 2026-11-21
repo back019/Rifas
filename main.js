@@ -52,6 +52,27 @@ ipcMain.handle('guardar-imagen', async (ev, nombre, bytes) => {
   return true;
 });
 
+// Respaldo automático: un archivo por día en Documentos\Rifas - respaldos; se guardan los últimos 14 días.
+const RESPALDOS_DIAS = 14;
+const carpetaRespaldos = () => path.join(app.getPath('documents'), 'Rifas - respaldos');
+ipcMain.handle('respaldo-auto', async (ev, contenido) => {
+  const dir = carpetaRespaldos();
+  await fs.mkdir(dir, { recursive: true });
+  const hoy = new Date();
+  const f = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+  const archivo = path.join(dir, `respaldo-rifas-${f}.json`);
+  // Se escribe primero a un archivo temporal para no dejar un respaldo a medias si se apaga la PC.
+  await fs.writeFile(archivo + '.tmp', String(contenido), 'utf8');
+  await fs.rename(archivo + '.tmp', archivo);
+  const viejos = (await fs.readdir(dir)).filter(n => /^respaldo-rifas-\d{4}-\d{2}-\d{2}\.json$/.test(n)).sort().reverse().slice(RESPALDOS_DIAS);
+  for (const n of viejos) await fs.unlink(path.join(dir, n)).catch(() => {});
+  return { archivo, fecha: new Date().toISOString() };
+});
+ipcMain.handle('abrir-respaldos', async () => {
+  await fs.mkdir(carpetaRespaldos(), { recursive: true });
+  return shell.openPath(carpetaRespaldos());
+});
+
 // Copiar la imagen al portapapeles (para pegarla en WhatsApp Web con Ctrl+V).
 ipcMain.handle('copiar-imagen', async (ev, bytes) => {
   clipboard.writeImage(nativeImage.createFromBuffer(Buffer.from(bytes)));
