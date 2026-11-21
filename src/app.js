@@ -17,7 +17,8 @@ const S = {
   tasas:{ '$':1, 'USDT':1 }, tasasFecha:'',
   rifaId:null, raw:new Map(), numsCargados:false,
   tab:'numeros', filtro:'todos', q:'', qComp:'',
-  multi:false, sel:new Set(), unsubNums:null, aviso:''
+  multi:false, sel:new Set(), unsubNums:null, aviso:'',
+  vista:'rifas', numsPorRifa:{}, statsListas:false, qCli:'', filtroCli:'todos'
 };
 
 function rifa(){ const r = S.rifas.find(r => r.id === S.rifaId); return r || null; }
@@ -159,9 +160,11 @@ function cargarStatsLista(){
     for(const r of S.rifas){
       try{
         const q = await S.db.collection(`rifas/${r.id}/numeros`).limit(1000).get();
-        S.stats[r.id] = calcStats(r, q.docs.map(d=>d.data()).filter(d => d && d.nombre).map(d => info(r, d)));
+        const lista = q.docs.map(d=>d.data()).filter(d => d && d.nombre).map(d => info(r, d));
+        S.stats[r.id] = calcStats(r, lista); S.numsPorRifa[r.id] = lista;
       }catch(e){}
     }
+    S.statsListas = true;
     if(!S.rifaId) render();
   }, 300);
 }
@@ -287,14 +290,16 @@ function render(){
   if(!S.dbListo && !S.iniciado){ app.innerHTML = h + '<p class="muted">Cargando…</p>'; return; }
   if(!S.dbListo){ app.innerHTML = h + `<div class="card empty"><h3>No se pudo abrir la base de datos</h3><p class="muted">Cierra la app y vuelve a abrirla.</p></div>`; $('#multibar').innerHTML=''; return; }
   if(!S.rifasCargadas){ app.innerHTML = h + '<p class="muted">Cargando rifas…</p>'; return; }
-  h += S.rifaId ? vistaRifa() : avisoRespaldo() + vistaLista();
+  h += S.rifaId ? vistaRifa() : (S.vista === 'clientes' ? vistaClientes() : avisoRespaldo() + vistaLista());
   app.innerHTML = h;
   renderMultibar();
 }
 function renderTop(){
   const t = $('#top'); const r = rifa();
-  if(!S.rifaId || !r){
-    t.innerHTML = `<h1>🎟️ Rifas</h1>${S.dbListo?`${botonSync()}<button class="btn" id="bTasas" title="Tasas">💱<span class="lbl"> Tasas</span></button><button class="btn" id="bHist" title="Historial">🕘<span class="lbl"> Historial</span></button>${S.respaldo?'<button class="btn" id="bRespaldo" title="Respaldo">💾<span class="lbl"> Respaldo</span></button>':''}<button class="btn pri" id="bNueva" title="Nueva rifa">+<span class="lbl"> Nueva</span></button>`:''}`;
+  if(!S.rifaId && S.vista === 'clientes'){
+    t.innerHTML = `<button class="btn icon" id="bAtras" aria-label="Volver">←</button><h1>👥 Clientes</h1>`;
+  } else if(!S.rifaId || !r){
+    t.innerHTML = `<h1>🎟️ Rifas</h1>${S.dbListo?`${botonSync()}<button class="btn" id="bTasas" title="Tasas">💱<span class="lbl"> Tasas</span></button><button class="btn" id="bClientes" title="Clientes">👥<span class="lbl"> Clientes</span></button><button class="btn" id="bHist" title="Historial">🕘<span class="lbl"> Historial</span></button>${S.respaldo?'<button class="btn" id="bRespaldo" title="Respaldo">💾<span class="lbl"> Respaldo</span></button>':''}<button class="btn pri" id="bNueva" title="Nueva rifa">+<span class="lbl"> Nueva</span></button>`:''}`;
   } else {
     t.innerHTML = `<button class="btn icon" id="bAtras" aria-label="Volver">←</button><h1>${esc(r.nombre)}</h1><button class="btn" id="bImagen" title="Imagen para estados">🖼️<span class="lbl"> Imagen</span></button><button class="btn" id="bTasas" title="Tasas">💱<span class="lbl"> Tasas</span></button><button class="btn icon" id="bHist" title="Historial" aria-label="Historial">🕘</button><button class="btn icon" id="bEditar" aria-label="Editar rifa">⚙️</button>`;
   }
@@ -657,7 +662,9 @@ function repartir(r, numsInfo, abono){
 function formNumero(nums, actual){
   const r = rifa();
   const e = actual || { nombre:'', telefono:'', nota:'' };
-  const comps = compradores(r);
+  // Sugerencias: compradores de esta rifa y clientes de rifas anteriores.
+  const vistos = new Set();
+  const comps = [...compradores(r), ...clientesParaSugerir()].filter(c => { const k = String(c.nombre).trim().toLowerCase(); if(vistos.has(k)) return false; vistos.add(k); return true; });
   const sh = modal(`<h2>${actual?'Editar datos del '+fmtNum(r,actual.num):'Asignar '+(nums.length>1?nums.length+' números':'número '+fmtNum(r,nums[0]))}</h2>
   ${nums.length>1?`<div class="nums">${nums.map(n=>`<b>${fmtNum(r,n)}</b>`).join('')}</div>`:''}
   <form id="fNum">
@@ -987,7 +994,7 @@ function ventanaRespaldo(){
 
 // ---------- eventos ----------
 document.addEventListener('click', async ev => {
-  const t = ev.target.closest('button, [data-abrir]'); if(!t) return;
+  const t = ev.target.closest('button, [data-abrir], [data-cli]'); if(!t) return;
   const r = rifa();
   if(t.id==='bNueva' || t.id==='bNueva2') return formRifa();
   if(t.id==='bRespaldo' || t.id==='bRespaldo2') return ventanaRespaldo();
@@ -996,7 +1003,10 @@ document.addEventListener('click', async ev => {
   if(t.id==='bHist') return ventanaHistorial(S.rifaId);
   if(t.id==='bImagen' || t.id==='bImagen2') return ventanaImagen(rifa());
   if(t.dataset.abrir) return abrirRifa(t.dataset.abrir);
-  if(t.id==='bAtras') return salirRifa();
+  if(t.id==='bAtras'){ if(!S.rifaId){ S.vista='rifas'; render(); return window.scrollTo(0,0); } return salirRifa(); }
+  if(t.id==='bClientes'){ S.vista='clientes'; cargarStatsLista(); render(); return window.scrollTo(0,0); }
+  if(t.dataset.filcli){ S.filtroCli = t.dataset.filcli; return render(); }
+  if(t.dataset.cli !== undefined) return ventanaCliente(S._cliVista[Number(t.dataset.cli)]);
   if(t.id==='bEditar') return formRifa(r);
   if(t.dataset.tab){ S.tab = t.dataset.tab; S.multi=false; S.sel.clear(); return render(); }
   if(t.dataset.fil){ S.filtro = t.dataset.fil; return render(); }
@@ -1056,8 +1066,8 @@ document.addEventListener('click', async ev => {
 });
 document.addEventListener('input', ev => {
   const id = ev.target.id;
-  if(id !== 'qNum' && id !== 'qComp') return;
-  if(id==='qNum') S.q = ev.target.value; else S.qComp = ev.target.value;
+  if(id !== 'qNum' && id !== 'qComp' && id !== 'qCli') return;
+  if(id==='qNum') S.q = ev.target.value; else if(id==='qComp') S.qComp = ev.target.value; else S.qCli = ev.target.value;
   const pos = ev.target.selectionStart; render();
   const i = document.getElementById(id); i.focus(); try{ i.setSelectionRange(pos,pos) }catch(e){}
 });

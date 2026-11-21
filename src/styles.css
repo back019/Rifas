@@ -114,3 +114,5 @@ table.hist td:first-child{width:30%;white-space:nowrap}
 table.hist tr.deshecho td{opacity:.55}
 .card.cobro.enviado{opacity:.7}
 .ok-txt{color:var(--pag);font-weight:600}
+.card.cli{cursor:pointer}
+.card.cli h4{margin:0 0 4px;font-size:16px}
