@@ -49,6 +49,7 @@ const TEMAS = {
 
 // Dibuja la imagen en el canvas. op: { plantilla, tema, contarApartados, mostrar ('pct'|'cant'), contacto }
 function dibujarImagen(canvas, r, op){
+  if(op.plantilla === 'lanzamiento') return dibujarFlyer(canvas, r, op); // ver flyer.js
   canvas.width = IMG_W; canvas.height = IMG_H;
   const ctx = canvas.getContext('2d');
   const T = TEMAS[op.tema] || TEMAS.morado;
@@ -173,30 +174,49 @@ function dibujarCuadricula(ctx, r, op, T, y0, yMax){
 }
 
 // ---------- ventana con vista previa y botones ----------
-function ventanaImagen(r){
+// forzar: opciones que se imponen al abrir (por ejemplo { plantilla:'lanzamiento' } al crear una rifa).
+function ventanaImagen(r, forzar){
   // Primero lo guardado en la rifa (se sincroniza entre equipos); si no hay, lo último usado en este equipo.
   // Solo cuenta lo que el usuario cambió a mano (manual: true); si no, se usa el diseño por defecto (negro y dorado).
   const local = leerPrefImagen();
   const elegido = (r.imagen && r.imagen.manual) ? r.imagen : (local.manual ? local : {});
-  const pref = { plantilla:'progreso', tema:'dorado', contarApartados:true, mostrar:'pct', contacto: local.contacto || '', ...elegido };
+  // Si todavía no se ha vendido nada, se propone el flyer de lanzamiento.
+  const base = S.raw.size === 0 && !(r.imagen && r.imagen.manual) ? 'lanzamiento' : 'progreso';
+  const pref = { plantilla:base, tema:'dorado', contarApartados:true, mostrar:'pct', contacto: local.contacto || '',
+    tamano:'vertical', pagos: local.pagos || '', frase:'¡Aparta el tuyo!', whatsapp: local.whatsapp || '', qr:false, otrasMonedas:true, ...elegido, ...(forzar || {}) };
   const nativo = window.rifasNativo && window.rifasNativo.guardarImagen;
   const sh = modal(`<h2>Imagen para estados</h2>
     <div class="img-ed">
       <div class="img-prev"><canvas id="cvImg"></canvas></div>
       <form id="fImg" class="img-op">
         <label class="f"><span>Diseño</span><div class="seg">
-          <label><input type="radio" name="plantilla" value="progreso" ${pref.plantilla!=='numeros'?'checked':''}>Progreso</label>
+          <label><input type="radio" name="plantilla" value="lanzamiento" ${pref.plantilla==='lanzamiento'?'checked':''}>Lanzamiento</label>
+          <label><input type="radio" name="plantilla" value="progreso" ${pref.plantilla==='progreso'?'checked':''}>Progreso</label>
           <label><input type="radio" name="plantilla" value="numeros" ${pref.plantilla==='numeros'?'checked':''}>Números</label></div></label>
+        <div data-solo="lanzamiento">
+          <label class="f"><span>Tamaño</span><div class="seg">
+            <label><input type="radio" name="tamano" value="vertical" ${pref.tamano!=='cuadrado'?'checked':''}>Vertical (estados)</label>
+            <label><input type="radio" name="tamano" value="cuadrado" ${pref.tamano==='cuadrado'?'checked':''}>Cuadrado (publicación)</label></div></label>
+          <div class="f"><span class="muted" style="font-size:13px;display:block;margin-bottom:4px">Foto del premio</span>
+            <div class="row"><label class="btn sm">📷 <span id="iFotoTxt">${r.foto?'Cambiar foto':'Elegir foto'}</span><input type="file" id="iFoto" accept="image/*" hidden></label>
+            <button type="button" class="btn sm danger" id="iQuitarFoto" ${r.foto?'':'hidden'}>Quitar</button><span class="muted" id="iFotoInfo" style="font-size:12px"></span></div></div>
+          <label class="f"><span>Formas de pago</span><input type="text" name="pagos" value="${esc(pref.pagos)}" placeholder="Pago móvil · Zelle · Binance · Efectivo"></label>
+          <label class="f"><span>Frase</span><input type="text" name="frase" value="${esc(pref.frase)}" placeholder="¡Aparta el tuyo!"></label>
+          <label class="row" style="margin-bottom:8px"><input type="checkbox" name="otrasMonedas" ${pref.otrasMonedas?'checked':''}> Mostrar el precio en otras monedas (con las tasas)</label>
+          <label class="row" style="margin-bottom:6px"><input type="checkbox" name="qr" ${pref.qr?'checked':''}> Agregar QR que abre WhatsApp</label>
+          <label class="f"><span>WhatsApp para el QR</span><input type="tel" name="whatsapp" value="${esc(pref.whatsapp)}" placeholder="0414-1234567"></label>
+        </div>
         <label class="f" data-solo="progreso"><span>Mostrar</span><select name="mostrar">
           <option value="pct" ${pref.mostrar!=='cant'?'selected':''}>Porcentaje (50%)</option>
           <option value="cant" ${pref.mostrar==='cant'?'selected':''}>Cantidad (50 de 100)</option></select></label>
         <label class="f"><span>Color</span><select name="tema">${Object.keys(TEMAS).map(k=>`<option value="${k}" ${pref.tema===k?'selected':''}>${TEMAS[k].nombre || (k[0].toUpperCase()+k.slice(1))}</option>`).join('')}</select></label>
-        <label class="row" style="margin-bottom:10px"><input type="checkbox" name="contarApartados" ${pref.contarApartados?'checked':''}> Contar los apartados como vendidos</label>
+        <label class="row" data-no="lanzamiento" style="margin-bottom:10px"><input type="checkbox" name="contarApartados" ${pref.contarApartados?'checked':''}> Contar los apartados como vendidos</label>
         <label class="f"><span>Texto de contacto (opcional)</span><input type="text" name="contacto" value="${esc(pref.contacto)}" placeholder="Escríbeme al 0414-1234567"></label>
       </form>
     </div>
     <div class="acts">
       <button class="btn" data-x>Cerrar</button>
+      <button class="btn" id="iTexto" data-solo="lanzamiento">Copiar texto</button>
       ${nativo ? '<button class="btn" id="iCopiar">Copiar</button><button class="btn pri" id="iGuardar">Guardar imagen</button>'
                : '<button class="btn" id="iDescargar">Descargar</button><button class="btn pri" id="iCompartir">Compartir</button>'}
     </div>`);
@@ -206,12 +226,16 @@ function ventanaImagen(r){
   let guardado = JSON.stringify(r.imagen || null);
   const opciones = () => ({
     plantilla: form.plantilla.value, tema: form.tema.value, mostrar: form.mostrar.value,
-    contarApartados: form.contarApartados.checked, contacto: form.contacto.value.trim()
+    contarApartados: form.contarApartados.checked, contacto: form.contacto.value.trim(),
+    tamano: form.tamano.value, pagos: form.pagos.value.trim(), frase: form.frase.value.trim(),
+    whatsapp: form.whatsapp.value.trim(), qr: form.qr.checked, otrasMonedas: form.otrasMonedas.checked
   });
   const redibujar = (manual) => {
     const op = opciones();
-    sh.querySelector('[data-solo="progreso"]').style.display = op.plantilla === 'progreso' ? '' : 'none';
-    dibujarImagen(cv, r, op);
+    sh.querySelectorAll('[data-solo]').forEach(el => el.style.display = op.plantilla === el.dataset.solo ? '' : 'none');
+    sh.querySelectorAll('[data-no]').forEach(el => el.style.display = op.plantilla === el.dataset.no ? 'none' : '');
+    // La foto puede tardar en cargar: cuando termine se vuelve a dibujar.
+    dibujarImagen(cv, r, { ...op, alCargar: () => { if(cv.isConnected) redibujar(false); } });
     blob = null; clearTimeout(pend);
     // Se prepara el archivo de una vez para que "Compartir" funcione al primer toque en el iPhone.
     pend = setTimeout(() => cv.toBlob(b => { blob = b; }, 'image/png'), 50);
@@ -228,7 +252,28 @@ function ventanaImagen(r){
   form.addEventListener('input', () => redibujar(true)); form.addEventListener('change', () => redibujar(true));
   redibujar(false);
 
-  const nombreArchivo = () => `estado-${r.nombre.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')}.png`;
+  // Foto del premio: se achica (~150 KB) y se guarda en la rifa para que salga igual en todos los equipos.
+  const inFoto = sh.querySelector('#iFoto'), info = sh.querySelector('#iFotoInfo');
+  inFoto.onchange = async () => {
+    const a = inFoto.files[0]; if(!a) return;
+    info.textContent = 'Preparando la foto…';
+    try{
+      const dato = await achicarFoto(a);
+      await S.db.doc(`rifas/${r.id}`).update({ foto: dato });
+      r.foto = dato; info.textContent = `Lista (${Math.round(bytesDataURL(dato)/1024)} KB)`;
+      sh.querySelector('#iFotoTxt').textContent = 'Cambiar foto'; sh.querySelector('#iQuitarFoto').hidden = false;
+      redibujar(false);
+    }catch(e){ info.textContent = ''; toast('No se pudo usar esa foto'); }
+    inFoto.value = '';
+  };
+  sh.querySelector('#iQuitarFoto').onclick = async () => {
+    try{ await S.db.doc(`rifas/${r.id}`).update({ foto: null }); }catch(e){ return toast(errorTxt(e)); }
+    r.foto = null; info.textContent = ''; sh.querySelector('#iFotoTxt').textContent = 'Elegir foto'; sh.querySelector('#iQuitarFoto').hidden = true;
+    redibujar(false);
+  };
+  sh.querySelector('#iTexto').onclick = () => copiar(textoFlyer(r, opciones()));
+
+  const nombreArchivo = () => `${form.plantilla.value === 'lanzamiento' ? 'flyer' : 'estado'}-${r.nombre.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')}.png`;
   const conBlob = async () => blob || await new Promise(res => cv.toBlob(res, 'image/png'));
 
   const bG = sh.querySelector('#iGuardar');

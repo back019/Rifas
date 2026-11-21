@@ -555,7 +555,12 @@ function formRifa(r){
         const ref = S.db.collection('rifas').doc();
         await ref.set({ ...datos, creada:nowISO() });
         await registrar('crear-rifa', { id:ref.id, nombre:datos.nombre }, null, `Rifa "${datos.nombre}" creada`, null);
-        cerrarModal(); toast('Rifa creada'); abrirRifa(ref.id);
+        cerrarModal(); abrirRifa(ref.id);
+        setTimeout(() => {
+          const sh2 = modal(`<h2>✅ Rifa creada</h2><p class="muted">¿Quieres crear de una vez el flyer de lanzamiento para anunciarla en WhatsApp e Instagram?</p>
+            <div class="acts"><button class="btn" data-x>Ahora no</button><button class="btn pri" id="oFlyer">🖼️ Crear el flyer</button></div>`);
+          sh2.querySelector('#oFlyer').onclick = () => { const rr = rifa(); if(rr) ventanaImagen(rr, { plantilla:'lanzamiento' }); };
+        }, 150);
       }
     }catch(e){ btn.disabled=false; sh.querySelector('#errRifa').textContent = errorTxt(e); }
   };
