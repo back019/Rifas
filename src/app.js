@@ -105,6 +105,7 @@ function info(r, d){
 function num(n){ const r = rifa(); return r ? info(r, S.raw.get(n)) : null; }
 function numerosVendidos(){ const r = rifa(); return [...S.raw.values()].map(d => info(r, d)).sort((a,b)=>a.num-b.num); }
 function juega(p, inf){ return !!inf && inf.pct + 1e-9 >= p.requisito; }
+function tieneChoque(d){ return !!d && Array.isArray(d.choques) && d.choques.length > 0; }
 
 function calcStats(r, lista){
   let pag=0, apa=0, cobrado=0;
@@ -191,6 +192,9 @@ async function guardarNum(d){
   await refNum(d.num).set(limpio);
 }
 
+// ---------- historial ----------
+async function registrar(){} // se completa en el historial de cambios
+
 // ---------- render ----------
 function render(){
   renderTop();
@@ -247,7 +251,10 @@ function tabNumeros(r){
   const fil = [['todos','Todos ('+s.total+')'],['libres','Libres ('+s.libres+')'],['apartados','Deben ('+s.apa+')'],['pagados','Pagados ('+s.pag+')']];
   const prox = proximoPremio(r);
   if(prox && prox.requisito < 100) fil.push(['juegan', `Juegan ${esc(prox.nombre)} (${lista.filter(d=>juega(prox,d)).length})`]);
-  let h = `<div class="row"><div class="chips grow">${fil.map(([k,v])=>`<button class="chip ${S.filtro===k?'on':''}" data-fil="${k}">${v}</button>`).join('')}</div>
+  const nChoques = lista.filter(tieneChoque).length;
+  if(nChoques) fil.unshift(['choques', `⚠️ Vendidos dos veces (${nChoques})`]);
+  let h = nChoques ? `<div class="banner alerta">⚠️ ${nChoques===1?'Un número se vendió':nChoques+' números se vendieron'} a dos personas distintas en equipos diferentes (mientras no había conexión). Toca cada número marcado en rojo para decidir a quién se queda.</div>` : '';
+  h += `<div class="row"><div class="chips grow">${fil.map(([k,v])=>`<button class="chip ${S.filtro===k?'on':''}" data-fil="${k}">${v}</button>`).join('')}</div>
     <button class="btn sm ${S.multi?'pri':''}" id="bMulti">${S.multi?'✓ Selección múltiple':'Seleccionar varios'}</button></div>
     <div style="margin-top:10px"><input type="search" id="qNum" placeholder="Buscar número o nombre…" value="${esc(S.q)}"></div>`;
   const q = S.q.trim().toLowerCase();
@@ -259,10 +266,11 @@ function tabNumeros(r){
     if(S.filtro==='apartados' && est!=='apartado') continue;
     if(S.filtro==='pagados' && est!=='pagado') continue;
     if(S.filtro==='juegan' && !(prox && juega(prox, d))) continue;
+    if(S.filtro==='choques' && !tieneChoque(d)) continue;
     const txt = fmtNum(r,n);
     if(q && !(txt.includes(q) || (d && (String(d.nombre).toLowerCase().includes(q) || String(d.telefono||'').includes(q))))) continue;
-    const cls = ['n', d?est:'', S.sel.has(n)?'sel':'', ganadores.has(n)?'gan':''].join(' ');
-    const tit = d ? `${d.nombre} · ${pctTxt(d.pct)}` : 'Libre';
+    const cls = ['n', d?est:'', S.sel.has(n)?'sel':'', ganadores.has(n)?'gan':'', tieneChoque(d)?'choque':''].join(' ');
+    const tit = d ? `${d.nombre} · ${pctTxt(d.pct)}${tieneChoque(d)?' · ¡vendido dos veces!':''}` : 'Libre';
     const barra = d && d.estado==='apartado' ? `<i class="pb" style="width:${d.pct}%"></i>` : '';
     celdas.push(`<button class="${cls}" data-n="${n}" title="${esc(tit)}">${txt}${barra}</button>`);
   }
@@ -637,7 +645,20 @@ function detalleNumero(n){
   const abonos = d.abonos.length ? d.abonos.map(a => `<tr><td>${esc(fmtFechaHora(a.fecha))}<br><small class="muted">${esc(a.metodo||'')}${a.referencia?' · Ref '+esc(a.referencia):''}</small></td>
       <td>${fmtM(a.monto,a.moneda)}${a.moneda!==r.moneda?`<br><small class="muted">≈ ${money(a.equiv,r)} (tasa ${+Number(a.tasa).toFixed(4)})</small>`:''}
       <button class="btn sm danger" data-quitarabono="${esc(a.id)}" title="Borrar abono" style="float:right">✕</button></td></tr>`).join('') : `<tr><td colspan="2" class="muted">Sin abonos todavía</td></tr>`;
+  const choques = tieneChoque(d) ? d.choques.map((c,i) => {
+    const ab = (c.abonos||[]).reduce((s,a)=>s+(Number(a.equiv)||0),0);
+    return `<div class="card alerta" style="margin-bottom:10px">
+      <b>⚠️ Este número también se vendió a ${esc(c.nombre)}</b>
+      <div class="muted" style="font-size:13px">${esc(c.telefono||'Sin teléfono')}${c.nota?' · '+esc(c.nota):''} · abonado ${money(Math.min(ab,r.precio),r)} en ${(c.abonos||[]).length} abono(s)${c.actualizado?' · '+esc(fmtFechaHora(c.actualizado)):''}</div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn sm" data-chq="${i}" data-acc="mantener">Se queda ${esc(d.nombre)}</button>
+        <button class="btn sm" data-chq="${i}" data-acc="cambiar">Se queda ${esc(c.nombre)}</button>
+      </div>
+      <div class="row" style="margin-top:6px"><input type="text" inputmode="numeric" data-chqdest="${i}" placeholder="Otro número libre" style="max-width:150px">
+        <button class="btn sm pri" data-chq="${i}" data-acc="mover">Pasar a ${esc(c.nombre)} a ese número</button></div>
+    </div>`; }).join('') : '';
   const sh = modal(`<h2>Número ${fmtNum(r,n)} · ${esc(d.nombre)}</h2>
+    ${choques}
     <div class="muted">${esc(d.telefono||'Sin teléfono')}${d.nota?' · '+esc(d.nota):''}</div>
     <div class="bar" style="height:10px"><i style="width:${d.pct}%;background:${d.estado==='pagado'?'var(--pag)':'var(--apar)'}"></i></div>
     <div class="row"><b class="grow">${d.estado==='pagado'?'Pagado completo':'Abonado '+pctTxt(d.pct)}</b><span>${money(Math.min(d.abonado,r.precio),r)} de ${money(r.precio,r)}</span></div>
@@ -654,6 +675,11 @@ function detalleNumero(n){
   const ba = sh.querySelector('#dAbonar');
   if(ba) ba.onclick = () => formAbono(r, [d], `Abono al ${fmtNum(r,n)} (debe ${money(d.debe,r)})`);
   sh.querySelector('#dEditar').onclick = () => formNumero([n], d);
+  sh.querySelectorAll('[data-chq]').forEach(b => b.onclick = () => {
+    const i = Number(b.dataset.chq);
+    const dest = (sh.querySelector(`[data-chqdest="${i}"]`)||{}).value;
+    resolverChoque(r, n, i, b.dataset.acc, dest);
+  });
   sh.querySelectorAll('[data-quitarabono]').forEach(b => b.onclick = async () => {
     if(!await confirmar('¿Borrar este abono?', 'Borrar', true)) return;
     const act = num(n);
@@ -663,6 +689,37 @@ function detalleNumero(n){
     if(!await confirmar(`¿Liberar el número ${fmtNum(r,n)} de ${d.nombre}? Se borran sus abonos y queda disponible otra vez.`, 'Liberar', true)) return;
     try{ await refNum(n).delete(); toast('Número liberado'); }catch(e){ toast(errorTxt(e)); }
   };
+}
+// Número vendido dos veces: decidir a quién se queda.
+// mantener: sigue el comprador actual; cambiar: pasa a ser del otro; mover: el otro se va a un número libre.
+async function resolverChoque(r, n, i, acc, destTxt){
+  const act = num(n); if(!act || !tieneChoque(act)) return cerrarModal();
+  const c = act.choques[i]; if(!c) return;
+  const resto = act.choques.filter((_,k) => k !== i);
+  const resueltos = [...new Set([...(act.choquesResueltos||[]), RifasFusion.claveVenta(c)])];
+  const actual = { nombre:act.nombre, telefono:act.telefono||'', nota:act.nota||'', abonos:act.abonos, actualizado:act.actualizado||'' };
+  try{
+    if(acc === 'mantener'){
+      if(!await confirmar(`¿Dejar el ${fmtNum(r,n)} a ${act.nombre}? La venta a ${c.nombre} se descarta (queda en el historial).`, 'Sí, descartar', true)) return;
+      await guardarNum({ ...act, choques:resto, choquesResueltos:resueltos });
+      await registrar('choque', r, n, `Vendido dos veces: se quedó ${act.nombre}, se descartó la venta a ${c.nombre}`, { tipo:'choque', num:n, venta:c });
+    } else if(acc === 'cambiar'){
+      if(!await confirmar(`¿Dar el ${fmtNum(r,n)} a ${c.nombre}? La venta a ${act.nombre} se descarta (queda en el historial).`, 'Sí, cambiar', true)) return;
+      const resueltos2 = [...new Set([...resueltos, RifasFusion.claveVenta(actual)])];
+      await guardarNum({ ...act, nombre:c.nombre, telefono:c.telefono, nota:c.nota, abonos:c.abonos||[], choques:resto, choquesResueltos:resueltos2 });
+      await registrar('choque', r, n, `Vendido dos veces: se quedó ${c.nombre}, se descartó la venta a ${act.nombre}`, { tipo:'choque', num:n, venta:actual });
+    } else if(acc === 'mover'){
+      const m = parseInt(destTxt, 10);
+      if(isNaN(m) || m < r.inicio || m > r.inicio + r.cantidad - 1) return toast('Escribe un número libre de esta rifa');
+      if(S.raw.has(m)) return toast(`El ${fmtNum(r,m)} no está libre`);
+      const cur = await refNum(m).get();
+      if(cur.exists && cur.data() && cur.data().nombre) return toast(`El ${fmtNum(r,m)} no está libre`);
+      await guardarNum(info(r, { num:m, nombre:c.nombre, telefono:c.telefono, nota:c.nota, abonos:c.abonos||[], fecha:nowISO() }));
+      await guardarNum({ ...act, choques:resto, choquesResueltos:resueltos });
+      await registrar('choque', r, n, `Vendido dos veces: ${c.nombre} pasó del ${fmtNum(r,n)} al ${fmtNum(r,m)}`, null);
+    } else return;
+    cerrarModal(); toast('Listo');
+  }catch(e){ toast(errorTxt(e)); }
 }
 // Registrar un abono para uno o varios números (se reparte).
 function formAbono(r, numsInfo, titulo){

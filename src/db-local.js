@@ -88,12 +88,42 @@
     if (db) return api;
     db = new PouchDB(NOMBRE_DB, { auto_compaction: true });
     await db.info();
-    db.changes({ since: 'now', live: true }).on('change', c => {
+    db.changes({ since: 'now', live: true, conflicts: true, include_docs: true }).on('change', c => {
+      if (c.doc && c.doc._conflicts && c.doc._conflicts.length) resolver(c.id);
       for (const o of oyentes) if (o.coincide(c.id)) o.aviso();
     });
+    // Al abrir, une los choques que hayan quedado pendientes.
+    db.allDocs({ include_docs: true, conflicts: true }).then(r => {
+      for (const x of r.rows) if (x.doc && x.doc._conflicts && x.doc._conflicts.length) resolver(x.id);
+    }).catch(e => console.warn('Revisando choques:', e));
     const cfg = await leerCfg();
     if (cfg && cfg.url) arrancar(cfg);
     return api;
+  }
+
+  // ---------- choques entre equipos ----------
+  // Si la PC y el teléfono cambiaron el mismo registro sin conexión, PouchDB guarda las dos
+  // versiones. Aquí se unen (ver fusion.js): abonos de ambos lados y, si el número se vendió
+  // a dos personas distintas, la otra venta queda en "choques" para que el usuario decida.
+  const colaChoques = new Map();
+  function resolver(id) {
+    const prev = colaChoques.get(id) || Promise.resolve();
+    const sig = prev.then(() => resolverAhora(id)).catch(e => console.warn('Choque en ' + id + ':', e))
+      .finally(() => { if (colaChoques.get(id) === sig) colaChoques.delete(id); });
+    colaChoques.set(id, sig);
+    return sig;
+  }
+  async function resolverAhora(id) {
+    let g;
+    try { g = await db.get(id, { conflicts: true }); } catch (e) { return; }
+    if (!g._conflicts || !g._conflicts.length) return;
+    const otras = (await Promise.all(g._conflicts.map(rev => db.get(id, { rev }).catch(() => null)))).filter(Boolean);
+    const sinInterno = d => { const o = { ...d }; delete o._conflicts; return o; };
+    const unido = window.RifasFusion.fusionar(id, [sinInterno(g), ...otras.map(sinInterno)]);
+    const docs = otras.map(o => ({ _id: id, _rev: o._rev, _deleted: true }));
+    // Si la unión da lo mismo que ya hay, solo se borran las versiones sobrantes (así dos equipos no se pelean).
+    if (!window.RifasFusion.igual(unido, sinInterno(g))) docs.unshift({ ...unido, _id: id, _rev: g._rev });
+    await db.bulkDocs(docs);
   }
 
   async function exportar() {

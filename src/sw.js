@@ -1,8 +1,8 @@
 // Service worker: guarda los archivos de la app para que abra sin internet.
 // Cuando cambies algún archivo, sube el número de VERSION para que el teléfono baje lo nuevo.
-const VERSION = 'rifas-v3';
+const VERSION = 'rifas-v4';
 const ARCHIVOS = [
-  './', './index.html', './styles.css', './app.js', './imagen.js', './db-local.js', './inicio-local.js',
+  './', './index.html', './styles.css', './app.js', './imagen.js', './fusion.js', './db-local.js', './inicio-local.js',
   './vendor/pouchdb.min.js', './manifest.webmanifest',
   './iconos/icono-192.png', './iconos/icono-512.png', './iconos/apple-touch-icon.png', './iconos/favicon.png'
 ];
