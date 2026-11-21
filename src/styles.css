@@ -118,3 +118,4 @@ table.hist tr.deshecho td{opacity:.55}
 .card.cli h4{margin:0 0 4px;font-size:16px}
 .banner.nuevo{background:#e0e7ff;color:#312e81}
 @media (prefers-color-scheme:dark){.banner.nuevo{background:#1e1b4b;color:#c7d2fe}}
+.card.novedades{white-space:pre-wrap;font-size:14px;max-height:40vh;overflow:auto;margin-bottom:8px}

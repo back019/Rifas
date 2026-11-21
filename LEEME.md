@@ -51,11 +51,21 @@ En la misma computadora, dentro de la base PouchDB de la app (carpeta de datos d
 ## Pruebas automáticas
 Doble clic en `probar.bat` (o `npm run pruebas` en una terminal). Revisa los cálculos de abonos, porcentajes, quién participa en cada premio, el reparto de un abono entre varios números, la ganancia y la unión de datos al sincronizar. Córrelas antes de crear un instalador nuevo: si alguna falla, dice cuál.
 
+## Actualización automática del programa
+El programa se actualiza solo, sin desinstalar ni perder datos:
+- El instalador anota la carpeta desde donde lo ejecutaste (archivo `carpeta-instalador.txt` junto a `Rifas.exe`). Si instalas desde `dist`, esa es la carpeta.
+- Al abrir y cada 3 horas, el programa busca ahí un `Instalar-Rifas-X.Y.Z.exe` más nuevo. Si lo encuentra, muestra una ventana (no obligatoria) con las novedades de `Novedades X.Y.Z.txt`, con "Actualizar ahora" y "Más tarde". "Más tarde" no vuelve a preguntar hasta que reinicies el programa, pero queda un aviso arriba.
+- "Actualizar ahora" cierra el programa, instala la versión nueva en silencio y lo vuelve a abrir en unos segundos.
+- También está el botón "Buscar actualización" en la ventana Respaldo.
+- Si no hay nada en la carpeta (por ejemplo en otra PC), revisa `version.json` en GitHub Pages y solo avisa con un enlace para bajar el instalador.
+- Si mueves o borras la carpeta del instalador, ejecuta una vez a mano un instalador desde la carpeta nueva.
+- El instalador no está firmado: si el antivirus lo frena, agrega una excepción para la carpeta del instalador y para `%LOCALAPPDATA%\Programs\Rifas`.
+
 ## Publicar una versión nueva del programa
 1. Sube el número de versión en `package.json` y en `src/version.json` (el mismo número, por ejemplo 1.2.0) y escribe las novedades en `src/version.json`.
-2. Doble clic en `probar.bat` y luego en `crear-instalador.bat`.
-3. En GitHub, en el repositorio Rifas → Releases → "Draft a new release", ponle el número de versión y sube `dist\Instalar-Rifas-X.Y.Z.exe`.
-4. Sube los cambios a main (con `publicar.bat`). Al publicarse `version.json` en GitHub Pages, los programas instalados muestran el aviso "Hay una versión nueva" con el enlace para bajarla. El teléfono se actualiza solo.
+2. Doble clic en `probar.bat` y luego en `crear-instalador.bat`. Deja en `dist` el instalador `Instalar-Rifas-X.Y.Z.exe` y `Novedades X.Y.Z.txt` (sale de `src/version.json`).
+3. Listo para esta PC: la próxima vez que abras el programa (o con "Buscar actualización") aparece la ventana para actualizar.
+4. Para otras PCs (opcional): en GitHub, repositorio Rifas → Releases → "Draft a new release", ponle el número de versión y sube el `.exe`. Al subir los cambios a main (`publicar.bat`) se publica `version.json` y esas PCs ven el aviso con el enlace. El teléfono se actualiza solo.
 
 ## Teléfono (iPhone o Android)
 La carpeta `src/` también es una app web instalable (PWA). Se publica gratis en GitHub Pages con `publicar.bat` y en el teléfono se agrega a la pantalla de inicio. Los pasos completos están en `GUIA-IPHONE.md`.

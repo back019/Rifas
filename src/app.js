@@ -925,19 +925,51 @@ function textoAuto(){
   return u ? `Último respaldo automático: ${esc(fmtFechaHora(u.fecha))}` : 'Todavía no se ha hecho el primer respaldo automático (se hace unos segundos después de abrir la app).';
 }
 // Aviso de versión nueva del programa de Windows (S.actualizacion lo llena inicio-local.js).
+// ---------- actualización del programa de Windows ----------
+// Primero busca en la carpeta desde donde se instaló (Instalar-Rifas-X.Y.Z.exe más nuevo): si hay,
+// abre una ventana no obligatoria y con "Actualizar ahora" se instala sola. Si no, revisa version.json
+// en GitHub Pages y solo avisa con un enlace de descarga (para otras PCs).
+async function revisarActualizacion(manual){
+  const nat = window.rifasNativo; if(!nat || !nat.buscarActualizacion) return;
+  let a = null;
+  try{ a = await nat.buscarActualizacion(); }catch(e){ if(manual) toast('No se pudo buscar la actualización'); return; }
+  S.version = a.actual; S.actualizacion = a.hay ? a : null;
+  if(!a.hay){ if(manual) toast(`Ya tienes la última versión (${a.actual})`); render(); return; }
+  if(a.origen === 'local'){
+    if(manual || (S.actOmitida !== a.version && $('#modal').hidden)) return ventanaActualizacion();
+  } else if(manual) return ventanaActualizacion();
+  render();
+}
 function avisoActualizacion(){
   const a = S.actualizacion; if(!a) return '';
-  try{ if(localStorage.getItem('actualizacionLuego') === a.version) return ''; }catch(e){}
-  return `<div class="banner nuevo">🆕 Hay una versión nueva del programa: <b>${esc(a.version)}</b> (tienes la ${esc(a.actual)}). <button class="btn sm pri" id="bActualizar">Ver novedades</button></div>`;
+  if(a.origen !== 'local'){ try{ if(localStorage.getItem('actualizacionLuego') === a.version) return ''; }catch(e){} }
+  return `<div class="banner nuevo">🆕 Hay una versión nueva del programa: <b>${esc(a.version)}</b> (tienes la ${esc(a.actual)}). <button class="btn sm pri" id="bActualizar">${a.origen==='local'?'Actualizar':'Ver novedades'}</button></div>`;
 }
 function ventanaActualizacion(){
   const a = S.actualizacion; if(!a) return;
-  const sh = modal(`<h2>Versión nueva: ${esc(a.version)}</h2>
-    <p class="muted">Tienes la versión ${esc(a.actual)}. Tus rifas no se pierden al actualizar: el programa nuevo usa la misma carpeta de datos.</p>
-    ${a.notas && a.notas.length ? `<ul>${a.notas.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
-    <ol class="muted" style="font-size:13px"><li>Toca "Descargar" y baja el archivo <b>Instalar-Rifas-${esc(a.version)}.exe</b>.</li><li>Cierra este programa y abre el instalador.</li></ol>
-    <div class="acts"><button class="btn" id="aLuego">Recordar después</button><a class="btn pri" href="${esc(a.descarga)}" target="_blank" rel="noopener">Descargar</a></div>`);
-  sh.querySelector('#aLuego').onclick = () => { try{ localStorage.setItem('actualizacionLuego', a.version); }catch(e){} cerrarModal(); render(); };
+  const nov = a.origen === 'local'
+    ? (a.novedades ? `<div class="card novedades">${esc(a.novedades)}</div>` : '')
+    : (a.notas && a.notas.length ? `<ul>${a.notas.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : '');
+  const sh = modal(`<h2>🆕 Hay una versión nueva: ${esc(a.version)}</h2>
+    <p class="muted">Tienes la versión ${esc(a.actual)}. Tus rifas no se pierden al actualizar: los datos están aparte del programa.</p>
+    ${nov}
+    ${a.origen === 'local'
+      ? `<p class="muted" style="font-size:13px">Con "Actualizar ahora" el programa se cierra, se actualiza solo en unos segundos y se vuelve a abrir.</p>
+         <div class="acts"><button class="btn" id="aLuego">Más tarde</button><button class="btn pri" id="aAhora">Actualizar ahora</button></div>`
+      : `<ol class="muted" style="font-size:13px"><li>Toca "Descargar" y baja el archivo <b>Instalar-Rifas-${esc(a.version)}.exe</b>.</li><li>Cierra este programa y abre el instalador.</li></ol>
+         <div class="acts"><button class="btn" id="aLuego">Recordar después</button><a class="btn pri" href="${esc(a.descarga)}" target="_blank" rel="noopener">Descargar</a></div>`}`);
+  sh.querySelector('#aLuego').onclick = () => {
+    // Local: no vuelve a preguntar por esa versión hasta reiniciar el programa. Web: hasta la próxima versión.
+    if(a.origen === 'local') S.actOmitida = a.version;
+    else { try{ localStorage.setItem('actualizacionLuego', a.version); }catch(e){} }
+    cerrarModal(); render();
+  };
+  const ahora = sh.querySelector('#aAhora');
+  if(ahora) ahora.onclick = async () => {
+    ahora.disabled = true; ahora.textContent = 'Actualizando…';
+    let ok = false; try{ ok = await window.rifasNativo.instalarActualizacion(); }catch(e){}
+    if(!ok){ ahora.disabled = false; ahora.textContent = 'Actualizar ahora'; toast('No se encontró el instalador. ¿Se movió la carpeta?'); }
+  };
 }
 // En el teléfono sin sincronizar no hay respaldo automático: se recuerda guardar uno cada semana.
 function avisoRespaldo(){
@@ -958,7 +990,7 @@ function ventanaRespaldo(){
       <div class="muted" style="font-size:13px" id="rAutoTxt">${textoAuto()}</div>
       <div class="row" style="margin-top:8px"><button class="btn sm" id="rAutoYa">Hacer respaldo ahora</button><button class="btn sm" id="rAutoDir">Abrir carpeta</button></div></div>`
       : `<p class="muted" style="font-size:13px;margin-top:10px">${S.respaldo.ultimoManual() ? 'Último respaldo guardado en este equipo: ' + esc(fmtFechaHora(S.respaldo.ultimoManual())) : 'En este equipo todavía no has guardado un respaldo.'}${S.sync && S.sync.estado().cfg ? ' Como está sincronizado, la PC también guarda los respaldos automáticos.' : ''}</p>`}
-    ${S.version ? `<p class="muted" style="font-size:12px;margin-top:10px">Programa versión ${esc(S.version)}</p>` : ''}
+    ${window.rifasNativo && window.rifasNativo.buscarActualizacion ? `<div class="row" style="margin-top:10px"><span class="muted grow" style="font-size:12px">Programa versión ${esc(S.version||'')}</span><button class="btn sm" id="rBuscarAct">Buscar actualización</button></div>` : ''}
     <div class="acts"><button class="btn" data-x>Cerrar</button></div>`);
   const ya = sh.querySelector('#rAutoYa');
   if(ya) ya.onclick = async () => {
@@ -967,6 +999,8 @@ function ventanaRespaldo(){
     catch(e){ toast('No se pudo guardar el respaldo'); }
     ya.disabled = false;
   };
+  const ba = sh.querySelector('#rBuscarAct');
+  if(ba) ba.onclick = () => revisarActualizacion(true);
   const dir = sh.querySelector('#rAutoDir');
   if(dir) dir.onclick = () => S.respaldo.auto.abrirCarpeta();
   sh.querySelector('#rExp').onclick = async () => {

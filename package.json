@@ -9,7 +9,7 @@
   "scripts": {
     "start": "electron .",
     "pruebas": "node --test pruebas/",
-    "instalador": "electron-builder --win nsis --x64"
+    "instalador": "electron-builder --win nsis --x64 && node build/novedades.js"
   },
   "devDependencies": {
     "electron": "^45.0.0",
@@ -56,7 +56,8 @@
       "installerHeaderIcon": "build/icon.ico",
       "deleteAppDataOnUninstall": false,
       "artifactName": "Instalar-Rifas-${version}.exe",
-      "language": "3082"
+      "language": "3082",
+      "include": "build/instalador.nsh"
     },
     "publish": null
   }
