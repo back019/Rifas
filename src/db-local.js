@@ -133,7 +133,7 @@
 
   async function importar(respaldo) {
     if (!respaldo || respaldo.app !== 'rifas' || !Array.isArray(respaldo.docs)) throw new Error('Respaldo no válido');
-    const ids = respaldo.docs.map(d => d._id).filter(id => typeof id === 'string' && (id.startsWith('rifas/') || id.startsWith('config/')));
+    const ids = respaldo.docs.map(d => d._id).filter(id => typeof id === 'string' && (id.startsWith('rifas/') || id.startsWith('config/') || id.startsWith('historial/')));
     const act = await db.allDocs({ keys: ids });
     const revs = {}; act.rows.forEach(x => { if (x.value && !x.value.deleted) revs[x.id] = x.value.rev; });
     const docs = respaldo.docs.filter(d => ids.includes(d._id)).map(d => ({ ...d, ...(revs[d._id] ? { _rev: revs[d._id] } : {}) }));

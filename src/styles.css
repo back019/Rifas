@@ -110,3 +110,5 @@ fieldset.abono legend{font-size:13px;color:var(--muted);padding:0 4px}
 .banner.alerta,.card.alerta{background:#fee2e2;color:#7f1d1d;border-color:#fca5a5}
 @media (prefers-color-scheme:dark){.banner.alerta,.card.alerta{background:#3b1212;color:#fecaca;border-color:#7f1d1d}}
 .card.alerta .muted{color:inherit;opacity:.8}
+table.hist td:first-child{width:30%;white-space:nowrap}
+table.hist tr.deshecho td{opacity:.55}

@@ -145,6 +145,7 @@ function iniciarDB(){
     if(!S.rifaId) cargarStatsLista();
     render();
   }, err => { clearTimeout(timer); S.aviso = 'No se pudo leer la base de datos ('+err.code+').'; S.rifasCargadas=true; render(); });
+  setTimeout(limpiarHistorial, 20000);
   S.db.doc('config/tasas').onSnapshot(s => {
     if(s.exists){ const d = s.data(); S.tasas = { ...S.tasas, ...(d.tasas||{}), '$':1 }; S.tasasFecha = d.actualizado||''; }
     render();
@@ -193,7 +194,90 @@ async function guardarNum(d){
 }
 
 // ---------- historial ----------
-async function registrar(){} // se completa en el historial de cambios
+// Cada cambio importante queda anotado en historial/<id>. Los que se pueden deshacer
+// guardan en "deshacer" lo necesario para volver atrás (por ejemplo el número liberado completo).
+const EQUIPO = (typeof window !== 'undefined' && window.rifasNativo) ? 'PC' : 'Teléfono';
+const DIAS_HISTORIAL = 180;
+const histId = () => new Date().toISOString().replace(/[-:.TZ]/g,'') + Math.random().toString(36).slice(2,6);
+async function registrar(tipo, r, n, texto, deshacer){
+  try{
+    await S.db.doc(`historial/${histId()}`).set({ tipo, rifaId: r ? r.id : '', rifaNombre: r ? r.nombre : '', num: n ?? null,
+      texto, deshacer: deshacer || null, deshecho:false, equipo:EQUIPO, fecha: nowISO() });
+  }catch(e){ console.warn('Historial:', e); }
+}
+async function limpiarHistorial(){
+  try{
+    const lim = new Date(Date.now() - DIAS_HISTORIAL*864e5).toISOString();
+    const q = await S.db.collection('historial').get();
+    for(const d of q.docs){ const x = d.data(); if(x && x.fecha && x.fecha < lim) await S.db.doc(`historial/${d.id}`).delete(); }
+  }catch(e){}
+}
+
+async function deshacer(id){
+  const ref = S.db.doc(`historial/${id}`);
+  const s = await ref.get(); if(!s.exists) return;
+  const h = s.data(); const u = h.deshacer;
+  if(!u || h.deshecho) return toast('Esto ya no se puede deshacer');
+  const refN = n => S.db.doc(`rifas/${h.rifaId}/numeros/${n}`);
+  const rifaExiste = async () => (await S.db.doc(`rifas/${h.rifaId}`).get()).exists;
+  const leerNum = async n => { const x = await refN(n).get(); return x.exists && x.data() && x.data().nombre ? x.data() : null; };
+  try{
+    if(u.tipo === 'rifa'){
+      if(await rifaExiste()) return toast('Esa rifa ya existe');
+      await S.db.doc(`rifas/${h.rifaId}`).set(u.rifa);
+      for(const d of (u.numeros||[])) await refN(d.num).set(d);
+    } else {
+      if(!await rifaExiste()) return toast('La rifa ya no existe. Primero recupera la rifa.');
+      if(u.tipo === 'liberar'){
+        if(await leerNum(u.num)) return toast('Ese número ya se volvió a vender; no se puede recuperar encima.');
+        await refN(u.num).set({ ...u.doc, actualizado: nowISO() });
+      } else if(u.tipo === 'abono'){
+        const d = await leerNum(u.num); if(!d) return toast('Ese número ya no está vendido');
+        const abonos = Array.isArray(d.abonos) ? d.abonos : [];
+        if(!abonos.some(a => a.id === u.abono.id)) abonos.push(u.abono);
+        abonos.sort((a,b) => String(a.fecha||'').localeCompare(String(b.fecha||'')));
+        await refN(u.num).set({ ...d, abonos, abonosBorrados:(d.abonosBorrados||[]).filter(x => x !== u.abono.id), actualizado: nowISO() });
+      } else if(u.tipo === 'datos'){
+        const d = await leerNum(u.num); if(!d) return toast('Ese número ya no está vendido');
+        await refN(u.num).set({ ...d, ...u.antes, actualizado: nowISO() });
+      } else if(u.tipo === 'choque'){
+        const d = await leerNum(u.num); if(!d) return toast('Ese número ya no está vendido');
+        const clave = RifasFusion.claveVenta(u.venta);
+        await refN(u.num).set({ ...d, choques:[...(d.choques||[]), u.venta], choquesResueltos:(d.choquesResueltos||[]).filter(k => k !== clave), actualizado: nowISO() });
+      } else if(u.tipo === 'ganador'){
+        const rs = await S.db.doc(`rifas/${h.rifaId}`).get(); const rr = rs.data();
+        const premios = (rr.premios||[]).map(p => p.id === u.premioId ? { ...p, ganador:u.ganador } : p);
+        await S.db.doc(`rifas/${h.rifaId}`).update({ premios, estado: premios.every(p => p.ganador) ? 'finalizada' : 'activa' });
+      } else return toast('Esto no se puede deshacer');
+    }
+    await ref.update({ deshecho:true, deshechoFecha: nowISO() });
+    await registrar('deshacer', { id:h.rifaId, nombre:h.rifaNombre }, h.num, 'Deshecho: ' + h.texto, null);
+    toast('Listo, se deshizo');
+  }catch(e){ toast(errorTxt(e)); }
+}
+
+const ICONO_HIST = { asignar:'🎟️', abono:'💵', 'borrar-abono':'🗑️', liberar:'↩️', datos:'✏️', rifa:'🗂️', 'crear-rifa':'🆕', 'editar-rifa':'⚙️', 'eliminar-rifa':'🗑️', ganador:'🏆', 'borrar-ganador':'🗑️', choque:'⚠️', tasas:'💱', respaldo:'💾', deshacer:'⏪' };
+async function ventanaHistorial(rifaId){
+  const sh = modal(`<h2>Historial${rifaId && rifa() ? ' · ' + esc(rifa().nombre) : ''}</h2><p class="muted">Cambios de los últimos ${DIAS_HISTORIAL} días en este y en los equipos sincronizados. Si algo se borró por error, toca "Deshacer".</p><div id="hLista" class="muted">Cargando…</div><div class="acts"><button class="btn" data-x>Cerrar</button></div>`);
+  sh.classList.add('ancho');
+  const pintar = async () => {
+    const q = await S.db.collection('historial').get();
+    let l = q.docs.map(d => ({ id:d.id, ...d.data() })).filter(h => !rifaId || h.rifaId === rifaId).sort((a,b) => String(b.fecha).localeCompare(String(a.fecha)));
+    const cont = sh.querySelector('#hLista'); if(!cont) return;
+    if(!l.length){ cont.textContent = 'Todavía no hay cambios anotados.'; return; }
+    const total = l.length; l = l.slice(0, 300);
+    cont.className = '';
+    cont.innerHTML = `<table class="det hist">${l.map(h => `<tr class="${h.deshecho?'deshecho':''}"><td>${esc(fmtFechaHora(h.fecha))}<br><small class="muted">${esc(h.equipo||'')}${!rifaId && h.rifaNombre?' · '+esc(h.rifaNombre):''}</small></td>
+      <td>${ICONO_HIST[h.tipo]||'•'} ${esc(h.texto)}${h.deshecho?' <small class="muted">(deshecho)</small>':''}
+      ${h.deshacer && !h.deshecho ? `<button class="btn sm" data-deshacer="${esc(h.id)}" style="float:right">Deshacer</button>` : ''}</td></tr>`).join('')}</table>
+      ${total > l.length ? `<p class="muted" style="font-size:13px">Se muestran los últimos ${l.length} de ${total}.</p>` : ''}`;
+    cont.querySelectorAll('[data-deshacer]').forEach(b => b.onclick = async () => {
+      if(!await confirmar('¿Deshacer este cambio?', 'Deshacer')) return ventanaHistorial(rifaId);
+      await deshacer(b.dataset.deshacer); ventanaHistorial(rifaId);
+    });
+  };
+  try{ await pintar(); }catch(e){ sh.querySelector('#hLista').textContent = 'No se pudo leer el historial.'; }
+}
 
 // ---------- render ----------
 function render(){
@@ -210,9 +294,9 @@ function render(){
 function renderTop(){
   const t = $('#top'); const r = rifa();
   if(!S.rifaId || !r){
-    t.innerHTML = `<h1>🎟️ Rifas</h1>${S.dbListo?`${botonSync()}<button class="btn" id="bTasas" title="Tasas">💱<span class="lbl"> Tasas</span></button>${S.respaldo?'<button class="btn" id="bRespaldo" title="Respaldo">💾<span class="lbl"> Respaldo</span></button>':''}<button class="btn pri" id="bNueva" title="Nueva rifa">+<span class="lbl"> Nueva</span></button>`:''}`;
+    t.innerHTML = `<h1>🎟️ Rifas</h1>${S.dbListo?`${botonSync()}<button class="btn" id="bTasas" title="Tasas">💱<span class="lbl"> Tasas</span></button><button class="btn" id="bHist" title="Historial">🕘<span class="lbl"> Historial</span></button>${S.respaldo?'<button class="btn" id="bRespaldo" title="Respaldo">💾<span class="lbl"> Respaldo</span></button>':''}<button class="btn pri" id="bNueva" title="Nueva rifa">+<span class="lbl"> Nueva</span></button>`:''}`;
   } else {
-    t.innerHTML = `<button class="btn icon" id="bAtras" aria-label="Volver">←</button><h1>${esc(r.nombre)}</h1><button class="btn" id="bImagen" title="Imagen para estados">🖼️<span class="lbl"> Imagen</span></button><button class="btn" id="bTasas" title="Tasas">💱<span class="lbl"> Tasas</span></button><button class="btn icon" id="bEditar" aria-label="Editar rifa">⚙️</button>`;
+    t.innerHTML = `<button class="btn icon" id="bAtras" aria-label="Volver">←</button><h1>${esc(r.nombre)}</h1><button class="btn" id="bImagen" title="Imagen para estados">🖼️<span class="lbl"> Imagen</span></button><button class="btn" id="bTasas" title="Tasas">💱<span class="lbl"> Tasas</span></button><button class="btn icon" id="bHist" title="Historial" aria-label="Historial">🕘</button><button class="btn icon" id="bEditar" aria-label="Editar rifa">⚙️</button>`;
   }
 }
 function lineaPremios(r){
@@ -467,19 +551,23 @@ function formRifa(r){
       if(r){
         const { id, ...resto } = r;
         await S.db.doc(`rifas/${r.id}`).set({ ...resto, ...datos, premio:null, fecha:null, loteria:null, ganador:null });
+        await registrar('editar-rifa', { id:r.id, nombre:datos.nombre }, null, `Rifa "${datos.nombre}" editada`, null);
         cerrarModal(); toast('Rifa actualizada');
       } else {
         const ref = S.db.collection('rifas').doc();
         await ref.set({ ...datos, creada:nowISO() });
+        await registrar('crear-rifa', { id:ref.id, nombre:datos.nombre }, null, `Rifa "${datos.nombre}" creada`, null);
         cerrarModal(); toast('Rifa creada'); abrirRifa(ref.id);
       }
     }catch(e){ btn.disabled=false; sh.querySelector('#errRifa').textContent = errorTxt(e); }
   };
   const bb = sh.querySelector('#bBorrarRifa');
   if(bb) bb.onclick = async () => {
-    if(!await confirmar(`¿Eliminar la rifa "${r.nombre}" y todos sus números? No se puede deshacer.`, 'Eliminar', true)) return;
+    if(!await confirmar(`¿Eliminar la rifa "${r.nombre}" y todos sus números? Se puede recuperar desde el Historial.`, 'Eliminar', true)) return;
     try{
       const q = await S.db.collection(`rifas/${r.id}/numeros`).limit(1000).get();
+      const rs = await S.db.doc(`rifas/${r.id}`).get();
+      await registrar('eliminar-rifa', r, null, `Eliminada la rifa "${r.nombre}" con ${q.docs.filter(d=>d.data()&&d.data().nombre).length} número(s) vendidos`, { tipo:'rifa', rifa: rs.data(), numeros: q.docs.map(d => d.data()).filter(Boolean) });
       for(const d of q.docs) await S.db.doc(`rifas/${r.id}/numeros/${d.id}`).delete();
       await S.db.doc(`rifas/${r.id}`).delete();
       toast('Rifa eliminada'); salirRifa();
@@ -498,7 +586,7 @@ function ventanaTasas(){
     ev.preventDefault();
     const f = new FormData(ev.target); const tasas = { '$':1 };
     for(const m of MONEDAS) if(m!=='$'){ const v = Number(f.get(m)); if(v>0) tasas[m]=v; }
-    try{ await S.db.doc('config/tasas').set({ tasas, actualizado: nowISO() }); cerrarModal(); toast('Tasas guardadas'); }
+    try{ await S.db.doc('config/tasas').set({ tasas, actualizado: nowISO() }); await registrar('tasas', null, null, 'Tasas: ' + Object.entries(tasas).filter(([k])=>k!=='$').map(([k,v])=>`1 $ = ${v} ${k}`).join(', '), null); cerrarModal(); toast('Tasas guardadas'); }
     catch(e){ toast(errorTxt(e)); }
   };
 }
@@ -594,7 +682,13 @@ function formNumero(nums, actual){
     const btn = form.querySelector('button.pri');
     if(actual){
       btn.disabled = true;
-      try{ await guardarNum({ ...num(actual.num), ...datos }); cerrarModal(); toast('Guardado'); }
+      try{
+        const prev = num(actual.num);
+        await guardarNum({ ...prev, ...datos });
+        if(prev.nombre !== datos.nombre || (prev.telefono||'') !== datos.telefono || (prev.nota||'') !== datos.nota)
+          await registrar('datos', r, actual.num, `${fmtNum(r,actual.num)}: datos cambiados de ${prev.nombre} a ${datos.nombre}${datos.telefono?' ('+datos.telefono+')':''}`, { tipo:'datos', num:actual.num, antes:{ nombre:prev.nombre, telefono:prev.telefono||'', nota:prev.nota||'' } });
+        cerrarModal(); toast('Guardado');
+      }
       catch(e){ btn.disabled=false; err(errorTxt(e)); }
       return;
     }
@@ -603,6 +697,8 @@ function formNumero(nums, actual){
     btn.disabled = true;
     const res = await asignar(r, nums, datos, ab);
     if(res.error){ btn.disabled=false; return err(res.error); }
+    const asignados = nums.filter(n => !res.ocupados.includes(n));
+    if(asignados.length) await registrar('asignar', r, asignados.length===1?asignados[0]:null, `${asignados.length===1?'Número '+fmtNum(r,asignados[0]):'Números '+asignados.map(n=>fmtNum(r,n)).join(', ')} a ${datos.nombre}${ab?' · abono '+fmtM(ab.monto,ab.moneda)+(ab.metodo?' '+ab.metodo:''):''}`, null);
     cerrarModal(); S.multi=false; S.sel.clear(); render();
     let msg = res.ocupados.length ? `Guardado. Ya estaban ocupados: ${res.ocupados.map(n=>fmtNum(r,n)).join(', ')}` : (nums.length>1 ? `${nums.length} números asignados` : 'Número asignado');
     if(res.sobra) msg += `. Sobró ${money(res.sobra,r)} del abono (no se registró).`;
@@ -686,11 +782,21 @@ function detalleNumero(n){
     const id = b.dataset.quitarabono;
     // El id del abono borrado se anota para que, al sincronizar, no vuelva desde el otro equipo.
     const borrados = [...new Set([...(act.abonosBorrados||[]), id])];
-    try{ await guardarNum({ ...act, abonos: act.abonos.filter(a => a.id !== id), abonosBorrados: borrados }); toast('Abono borrado'); }catch(e){ toast(errorTxt(e)); }
+    const ab = act.abonos.find(a => a.id === id);
+    try{
+      await guardarNum({ ...act, abonos: act.abonos.filter(a => a.id !== id), abonosBorrados: borrados });
+      if(ab) await registrar('borrar-abono', r, n, `Borrado abono de ${fmtM(ab.monto,ab.moneda)} del ${fmtNum(r,n)} (${act.nombre})`, { tipo:'abono', num:n, abono:ab });
+      toast('Abono borrado');
+    }catch(e){ toast(errorTxt(e)); }
   });
   sh.querySelector('#dLiberar').onclick = async () => {
-    if(!await confirmar(`¿Liberar el número ${fmtNum(r,n)} de ${d.nombre}? Se borran sus abonos y queda disponible otra vez.`, 'Liberar', true)) return;
-    try{ await refNum(n).delete(); toast('Número liberado'); }catch(e){ toast(errorTxt(e)); }
+    if(!await confirmar(`¿Liberar el número ${fmtNum(r,n)} de ${d.nombre}? Se borran sus abonos y queda disponible otra vez (se puede deshacer desde el Historial).`, 'Liberar', true)) return;
+    const copia = S.raw.get(n);
+    try{
+      await refNum(n).delete();
+      await registrar('liberar', r, n, `Liberado el ${fmtNum(r,n)} de ${d.nombre} (tenía ${money(Math.min(d.abonado,r.precio),r)} abonado)`, copia ? { tipo:'liberar', num:n, doc:copia } : null);
+      cerrarModal(); toast('Número liberado. Si fue un error, usa Historial → Deshacer.');
+    }catch(e){ toast(errorTxt(e)); }
   };
 }
 // Número vendido dos veces: decidir a quién se queda.
@@ -744,6 +850,7 @@ function formAbono(r, numsInfo, titulo){
     form.querySelector('button.pri').disabled = true;
     try{
       for(const p of rep.partes){ const act = num(p.d.num); await guardarNum({ ...act, abonos:[...act.abonos, p.abono] }); }
+      if(rep.partes.length) await registrar('abono', r, rep.partes.length===1?rep.partes[0].d.num:null, `Abono de ${fmtM(ab.monto,ab.moneda)}${ab.metodo?' ('+ab.metodo+(ab.referencia?' ref '+ab.referencia:'')+')':''} a ${rep.partes.map(p=>fmtNum(r,p.d.num)).join(', ')} · ${rep.partes[0].d.nombre}`, null);
       cerrarModal();
       toast(rep.sobra ? `Abono guardado. Sobró ${money(rep.sobra,r)} (ya estaba todo pagado).` : 'Abono guardado');
     }catch(e){ form.querySelector('button.pri').disabled = false; sh.querySelector('#errAb').textContent = errorTxt(e); }
@@ -759,6 +866,8 @@ async function guardarGanador(r, pid, numero, metodo){
   });
   try{
     await S.db.doc(`rifas/${r.id}`).update({ premios, estado: premios.every(p => p.ganador) ? 'finalizada' : 'activa' });
+    const p = premios.find(p => p.id === pid);
+    await registrar('ganador', r, numero, `${p.nombre}: salió el ${fmtNum(r,numero)}${d?' de '+d.nombre:' (no vendido)'}${p.ganador.juega?' · gana':' · no participaba'}`, null);
     toast('Resultado guardado');
   }catch(e){ toast(errorTxt(e)); }
 }
@@ -841,6 +950,7 @@ function ventanaRespaldo(){
       const datos = JSON.parse(await file.text());
       if(!await confirmar(`¿Cargar el respaldo? Se agregan o reemplazan ${datos.docs ? datos.docs.length : 0} registros. Lo que no está en el respaldo se queda igual.`, 'Cargar')) return;
       const n = await S.respaldo.importar(datos);
+      await registrar('respaldo', null, null, `Respaldo cargado (${n} registros)`, null);
       toast(`Respaldo cargado (${n} registros)`);
     }catch(e){ toast('Ese archivo no es un respaldo válido'); }
   };
@@ -854,6 +964,7 @@ document.addEventListener('click', async ev => {
   if(t.id==='bRespaldo') return ventanaRespaldo();
   if(t.id==='bTasas') return ventanaTasas();
   if(t.id==='bSync') return ventanaSync();
+  if(t.id==='bHist') return ventanaHistorial(S.rifaId);
   if(t.id==='bImagen' || t.id==='bImagen2') return ventanaImagen(rifa());
   if(t.dataset.abrir) return abrirRifa(t.dataset.abrir);
   if(t.id==='bAtras') return salirRifa();
@@ -904,8 +1015,12 @@ document.addEventListener('click', async ev => {
   }
   if(t.dataset.quitargan){
     if(!await confirmar('¿Borrar el resultado de este premio?', 'Borrar', true)) return;
+    const prev = r.premios.find(p => p.id === t.dataset.quitargan);
     const premios = r.premios.map(p => p.id === t.dataset.quitargan ? { ...p, ganador:null } : p);
-    try{ await S.db.doc(`rifas/${r.id}`).update({ premios, estado:'activa' }); }catch(e){ toast(errorTxt(e)); }
+    try{
+      await S.db.doc(`rifas/${r.id}`).update({ premios, estado:'activa' });
+      if(prev && prev.ganador) await registrar('borrar-ganador', r, prev.ganador.numero, `${prev.nombre}: borrado el resultado (${fmtNum(r,prev.ganador.numero)})`, { tipo:'ganador', premioId:prev.id, ganador:prev.ganador });
+    }catch(e){ toast(errorTxt(e)); }
   }
 });
 document.addEventListener('input', ev => {
