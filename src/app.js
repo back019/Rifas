@@ -683,7 +683,10 @@ function detalleNumero(n){
   sh.querySelectorAll('[data-quitarabono]').forEach(b => b.onclick = async () => {
     if(!await confirmar('¿Borrar este abono?', 'Borrar', true)) return;
     const act = num(n);
-    try{ await guardarNum({ ...act, abonos: act.abonos.filter(a => a.id !== b.dataset.quitarabono) }); toast('Abono borrado'); }catch(e){ toast(errorTxt(e)); }
+    const id = b.dataset.quitarabono;
+    // El id del abono borrado se anota para que, al sincronizar, no vuelva desde el otro equipo.
+    const borrados = [...new Set([...(act.abonosBorrados||[]), id])];
+    try{ await guardarNum({ ...act, abonos: act.abonos.filter(a => a.id !== id), abonosBorrados: borrados }); toast('Abono borrado'); }catch(e){ toast(errorTxt(e)); }
   });
   sh.querySelector('#dLiberar').onclick = async () => {
     if(!await confirmar(`¿Liberar el número ${fmtNum(r,n)} de ${d.nombre}? Se borran sus abonos y queda disponible otra vez.`, 'Liberar', true)) return;

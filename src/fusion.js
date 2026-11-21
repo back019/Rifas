@@ -62,7 +62,9 @@
     for (const v of vs) for (const k of (v.choquesResueltos || [])) resueltos.add(k);
     const choquesFinal = choques.filter(c => !resueltos.has(claveVenta(c))).sort((a, b) => claveVenta(a).localeCompare(claveVenta(b)));
 
-    const doc = { ...ganadora, nombre: reciente.nombre, telefono: reciente.telefono, nota: reciente.nota, actualizado: reciente.actualizado };
+    // Si la versión más reciente no tiene teléfono, se conserva el de otra versión.
+    const telefono = reciente.telefono || (iguales.find(v => v.telefono) || {}).telefono || '';
+    const doc = { ...ganadora, nombre: reciente.nombre, telefono, nota: reciente.nota, actualizado: reciente.actualizado };
     doc.abonos = unirAbonos(iguales.map(v => v.abonos), borrados);
     if (borrados.size) doc.abonosBorrados = [...borrados].sort(); else delete doc.abonosBorrados;
     if (choquesFinal.length) doc.choques = choquesFinal; else delete doc.choques;
