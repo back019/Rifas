@@ -81,8 +81,7 @@
   function fusionarRifa(versiones) {
     const vs = versiones.filter(Boolean);
     const doc = { ...vs[0] };
-    if (!Array.isArray(doc.premios)) return doc;
-    doc.premios = doc.premios.map(p => {
+    if (Array.isArray(doc.premios)) doc.premios = doc.premios.map(p => {
       if (p.ganador) return p;
       for (const v of vs.slice(1)) {
         const o = (v.premios || []).find(x => x.id === p.id);
@@ -90,7 +89,12 @@
       }
       return p;
     });
-    if (doc.premios.length) doc.estado = doc.premios.every(p => p.ganador) ? 'finalizada' : 'activa';
+    if (doc.premios && doc.premios.length) doc.estado = doc.premios.every(p => p.ganador) ? 'finalizada' : 'activa';
+    // Costos: se juntan los de todas las versiones, menos los borrados.
+    const borrados = new Set(); for (const v of vs) for (const id of (v.costosBorrados || [])) borrados.add(id);
+    const costos = new Map(); for (const v of vs) for (const c of (v.costos || [])) if (c && c.id && !borrados.has(c.id) && !costos.has(c.id)) costos.set(c.id, c);
+    if (costos.size || doc.costos) doc.costos = [...costos.values()].sort((x, y) => String(x.fecha || '').localeCompare(String(y.fecha || '')));
+    if (borrados.size) doc.costosBorrados = [...borrados].sort();
     return doc;
   }
 

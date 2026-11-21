@@ -81,7 +81,14 @@ function normRifa(r){
     o.premios = [{ id:'p1', nombre: o.premio || 'Premio mayor', requisito:100, fecha:o.fecha||'', loteria:o.loteria||'', ganador: o.ganador ? { ...o.ganador, juega:true } : null }];
   }
   o.premios = o.premios.map(p => ({ ...p, requisito: Number(p.requisito)||0 }));
+  o.costos = Array.isArray(o.costos) ? o.costos : [];
   return o;
+}
+function totalCostos(r){ return (r.costos||[]).reduce((s,c) => s + (Number(c.equiv)||0), 0); }
+// Ganancia: lo cobrado (o lo que se cobraría vendiendo todo) menos premios y gastos.
+function ganancia(r, s){
+  const costos = totalCostos(r);
+  return { costos, actual: s.cobrado - costos, potencial: s.potencial - costos, equilibrio: r.precio > 0 ? Math.ceil((costos - EPS) / r.precio) : 0 };
 }
 function premiosOrden(r){
   return [...r.premios].sort((a,b) => (a.fecha||'9999').localeCompare(b.fecha||'9999') || a.requisito - b.requisito);
@@ -247,6 +254,10 @@ async function deshacer(id){
         const d = await leerNum(u.num); if(!d) return toast('Ese número ya no está vendido');
         const clave = RifasFusion.claveVenta(u.venta);
         await refN(u.num).set({ ...d, choques:[...(d.choques||[]), u.venta], choquesResueltos:(d.choquesResueltos||[]).filter(k => k !== clave), actualizado: nowISO() });
+      } else if(u.tipo === 'costo'){
+        const rr = (await S.db.doc(`rifas/${h.rifaId}`).get()).data();
+        const costos = (rr.costos||[]).filter(c => c.id !== u.costo.id).concat([u.costo]);
+        await S.db.doc(`rifas/${h.rifaId}`).update({ costos, costosBorrados:(rr.costosBorrados||[]).filter(x => x !== u.costo.id) });
       } else if(u.tipo === 'ganador'){
         const rs = await S.db.doc(`rifas/${h.rifaId}`).get(); const rr = rs.data();
         const premios = (rr.premios||[]).map(p => p.id === u.premioId ? { ...p, ganador:u.ganador } : p);
@@ -259,7 +270,7 @@ async function deshacer(id){
   }catch(e){ toast(errorTxt(e)); }
 }
 
-const ICONO_HIST = { asignar:'🎟️', abono:'💵', 'borrar-abono':'🗑️', liberar:'↩️', datos:'✏️', rifa:'🗂️', 'crear-rifa':'🆕', 'editar-rifa':'⚙️', 'eliminar-rifa':'🗑️', ganador:'🏆', 'borrar-ganador':'🗑️', choque:'⚠️', tasas:'💱', respaldo:'💾', deshacer:'⏪' };
+const ICONO_HIST = { asignar:'🎟️', abono:'💵', 'borrar-abono':'🗑️', liberar:'↩️', datos:'✏️', rifa:'🗂️', 'crear-rifa':'🆕', 'editar-rifa':'⚙️', 'eliminar-rifa':'🗑️', ganador:'🏆', 'borrar-ganador':'🗑️', choque:'⚠️', costo:'🧾', 'borrar-costo':'🗑️', tasas:'💱', respaldo:'💾', deshacer:'⏪' };
 async function ventanaHistorial(rifaId){
   const sh = modal(`<h2>Historial${rifaId && rifa() ? ' · ' + esc(rifa().nombre) : ''}</h2><p class="muted">Cambios de los últimos ${DIAS_HISTORIAL} días en este y en los equipos sincronizados. Si algo se borró por error, toca "Deshacer".</p><div id="hLista" class="muted">Cargando…</div><div class="acts"><button class="btn" data-x>Cerrar</button></div>`);
   sh.classList.add('ancho');
@@ -319,6 +330,7 @@ function vistaLista(){
       <div class="muted" style="font-size:13px;margin-top:4px">${prox?`Próximo: ${esc(prox.nombre)}${prox.fecha?' · '+esc(fmtFecha(prox.fecha)):''}`:'Todos los premios sorteados'}</div>
       <div class="bar"><i style="width:${pctP}%;background:var(--pag)"></i><i style="width:${pctA}%;background:var(--apar)"></i></div>
       <div class="row" style="font-size:13px">${s?`<span class="grow">${s.pag+s.apa}/${s.total} vendidos</span><span>Cobrado <b>${money(s.cobrado,r)}</b></span>`:'<span class="muted">calculando…</span>'}</div>
+      ${s && r.costos.length ? (g => `<div class="muted" style="font-size:13px;text-align:right">Ganancia <b style="color:${g.actual>=0?'var(--pag)':'var(--danger)'}">${money(g.actual,r)}</b></div>`)(ganancia(r,s)) : ''}
     </div>`;
   }).join('') + `</div>`;
 }
@@ -466,6 +478,7 @@ function tabResumen(r){
   if(ms.length) h += `<div class="card" style="margin-top:12px"><b>Dinero recibido por moneda</b><table class="det" style="margin-top:6px">${ms.map(([k,v])=>`<tr><td>${esc(k)}</td><td>${fmtM(v,k)}</td></tr>`).join('')}</table></div>`;
   const me = Object.entries(porMetodo);
   if(me.length) h += `<div class="card" style="margin-top:12px"><b>Por método de pago (en ${esc(r.moneda)})</b><table class="det" style="margin-top:6px">${me.map(([k,v])=>`<tr><td>${esc(k)}</td><td>${money(v,r)}</td></tr>`).join('')}</table></div>`;
+  h += tarjetaCostos(r, s);
   h += `<div class="card" style="margin-top:12px"><b>Participantes por premio</b><table class="det" style="margin-top:6px">${premiosOrden(r).map(p=>`<tr><td>${esc(p.nombre)}${p.fecha?' · '+esc(fmtFecha(p.fecha)):''}</td><td>${lista.filter(d=>juega(p,d)).length} número(s) con ${p.requisito}% o más</td></tr>`).join('')}</table></div>`;
   h += `<div class="card" style="margin-top:12px"><b>Compartir y exportar</b>
     <div class="row" style="margin-top:10px">
@@ -475,6 +488,50 @@ function tabResumen(r){
       <button class="btn" id="bCSV">Exportar a Excel (CSV)</button>
     </div></div>`;
   return h;
+}
+function tarjetaCostos(r, s){
+  const g = ganancia(r, s);
+  const filas = (r.costos||[]).map(c => `<tr><td>${esc(c.concepto)}<br><small class="muted">${esc(fmtFecha(String(c.fecha||'').slice(0,10)))}</small></td>
+    <td>${fmtM(c.monto,c.moneda)}${c.moneda!==r.moneda?`<br><small class="muted">≈ ${money(c.equiv,r)}</small>`:''}
+    <button class="btn sm danger" data-quitarcosto="${esc(c.id)}" title="Borrar" style="float:right">✕</button></td></tr>`).join('');
+  const cubierto = g.costos > 0 ? Math.min(100, s.cobrado / g.costos * 100) : 0;
+  return `<div class="card" style="margin-top:12px"><b>Costos y ganancia</b>
+    <p class="muted" style="font-size:13px;margin:4px 0 8px">Anota lo que costaron los premios y otros gastos (publicidad, envíos…) para ver la ganancia real.</p>
+    ${filas ? `<table class="det">${filas}</table>` : ''}
+    <div class="row costo-form" style="margin-top:10px">
+      <input type="text" id="cConcepto" placeholder="Concepto (ej: Moto, Publicidad)" style="flex:2;min-width:160px">
+      <input type="number" id="cMonto" placeholder="Monto" min="0" step="any" style="flex:1;min-width:90px">
+      <select id="cMoneda" style="width:auto">${MONEDAS.map(m=>`<option ${m===r.moneda?'selected':''}>${m}</option>`).join('')}</select>
+      <input type="number" id="cTasa" placeholder="Tasa 1 ${esc(r.moneda)} = …" min="0" step="any" style="flex:1;min-width:110px" hidden>
+      <button class="btn pri" id="bAddCosto">+ Agregar</button>
+    </div>
+    ${g.costos > 0 ? `<div class="stats" style="margin-top:12px">
+      <div class="stat"><small>Costos</small><b>${money(g.costos,r)}</b></div>
+      <div class="stat"><small>Ganancia hasta ahora</small><b style="color:${g.actual>=0?'var(--pag)':'var(--danger)'}">${money(g.actual,r)}</b><small>cobrado − costos</small></div>
+      <div class="stat"><small>Ganancia si se vende todo</small><b>${money(g.potencial,r)}</b></div>
+      <div class="stat"><small>Para cubrir costos</small><b>${g.equilibrio}</b><small>números pagados (${Math.floor(cubierto)}% cubierto)</small></div>
+    </div>` : ''}</div>`;
+}
+async function agregarCosto(r){
+  const concepto = $('#cConcepto').value.trim(); const monto = Number($('#cMonto').value)||0; const moneda = $('#cMoneda').value;
+  const tasa = moneda === r.moneda ? 1 : Number($('#cTasa').value);
+  if(!concepto) return toast('Escribe el concepto');
+  if(!(monto > 0)) return toast('Escribe el monto');
+  if(!(tasa > 0)) return toast('Falta la tasa para ' + moneda);
+  const c = { id:uid(), concepto, monto, moneda, tasa, equiv: monto / tasa, fecha: nowISO() };
+  try{
+    await S.db.doc(`rifas/${r.id}`).update({ costos:[...(r.costos||[]), c] });
+    await registrar('costo', r, null, `Costo agregado: ${concepto} ${fmtM(monto,moneda)}`, null);
+    toast('Costo agregado');
+  }catch(e){ toast(errorTxt(e)); }
+}
+async function quitarCosto(r, id){
+  const c = (r.costos||[]).find(x => x.id === id); if(!c) return;
+  if(!await confirmar(`¿Borrar el costo "${c.concepto}"?`, 'Borrar', true)) return;
+  try{
+    await S.db.doc(`rifas/${r.id}`).update({ costos:(r.costos||[]).filter(x => x.id !== id), costosBorrados:[...new Set([...(r.costosBorrados||[]), id])] });
+    await registrar('borrar-costo', r, null, `Costo borrado: ${c.concepto} ${fmtM(c.monto,c.moneda)}`, { tipo:'costo', costo:c });
+  }catch(e){ toast(errorTxt(e)); }
 }
 function textoLibres(r){
   const libres = rango(r).filter(n => !S.raw.has(n)).map(n => fmtNum(r,n));
@@ -1031,6 +1088,8 @@ document.addEventListener('click', async ev => {
   if(t.id==='bCobrar') return ventanaCobrar(r);
   if(t.dataset.compro !== undefined) return ventanaComprobante(r, claveComp(S._compVista[Number(t.dataset.compro)]));
   if(t.id==='bCSV') return exportarCSV(r);
+  if(t.id==='bAddCosto') return agregarCosto(r);
+  if(t.dataset.quitarcosto) return quitarCosto(r, t.dataset.quitarcosto);
   if(t.dataset.vergan){
     const pid = t.dataset.vergan; const p = r.premios.find(p => p.id === pid);
     const v = document.querySelector(`[data-numgan="${pid}"]`).value.trim(); const n = parseInt(v, 10);
@@ -1063,6 +1122,12 @@ document.addEventListener('click', async ev => {
       if(prev && prev.ganador) await registrar('borrar-ganador', r, prev.ganador.numero, `${prev.nombre}: borrado el resultado (${fmtNum(r,prev.ganador.numero)})`, { tipo:'ganador', premioId:prev.id, ganador:prev.ganador });
     }catch(e){ toast(errorTxt(e)); }
   }
+});
+document.addEventListener('change', ev => {
+  if(ev.target.id !== 'cMoneda') return;
+  const r = rifa(); const m = ev.target.value; const ti = $('#cTasa');
+  ti.hidden = m === r.moneda;
+  const t = tasaEntre(m, r.moneda); ti.value = m === r.moneda ? '' : (t ? +t.toFixed(6) : '');
 });
 document.addEventListener('input', ev => {
   const id = ev.target.id;
