@@ -379,7 +379,8 @@ function tabCompradores(r){
   const q = S.qComp.trim().toLowerCase();
   const lista = compradores(r).filter(c => !q || String(c.nombre).toLowerCase().includes(q) || String(c.telefono||'').includes(q));
   S._compVista = lista;
-  let h = `<input type="search" id="qComp" placeholder="Buscar comprador…" value="${esc(S.qComp)}">`;
+  const deudores = compradores(r).filter(c => c.debe > EPS);
+  let h = `<div class="row"><input type="search" id="qComp" class="grow" style="flex:1;min-width:180px" placeholder="Buscar comprador…" value="${esc(S.qComp)}">${deudores.length?`<button class="btn pri" id="bCobrar">📣 Cobrar a todos (${deudores.length})</button>`:''}</div>`;
   if(!lista.length) return h + `<p class="muted" style="margin-top:16px">${S.raw.size?'Nadie coincide con la búsqueda.':'Todavía no has vendido números.'}</p>`;
   h += `<div class="comp" style="margin-top:12px">` + lista.map((c,i) => {
     const wa = telWa(c.telefono);
@@ -389,7 +390,7 @@ function tabCompradores(r){
       <div class="nums">${c.nums.map(d=>`<b class="${d.estado}" title="${pctTxt(d.pct)}">${fmtNum(r,d.num)}${d.estado==='apartado'?' · '+Math.floor(d.pct)+'%':''}</b>`).join('')}</div>
       <div class="row">${c.debe>EPS?`<button class="btn sm ok" data-abonarcomp="${i}">Registrar abono</button>`:''}
       ${wa?`<a class="btn sm" href="https://wa.me/${wa}?text=${encodeURIComponent(msgComprador(r,c))}" target="_blank" rel="noopener">WhatsApp</a>`:''}
-      <button class="btn sm" data-copiarmsg="${i}">Copiar mensaje</button></div>
+      <button class="btn sm" data-copiarmsg="${i}">Copiar mensaje</button><button class="btn sm" data-compro="${i}">🧾 Comprobante</button></div>
     </div>`;
   }).join('') + `</div>`;
   return h;
@@ -702,7 +703,7 @@ function formNumero(nums, actual){
     cerrarModal(); S.multi=false; S.sel.clear(); render();
     let msg = res.ocupados.length ? `Guardado. Ya estaban ocupados: ${res.ocupados.map(n=>fmtNum(r,n)).join(', ')}` : (nums.length>1 ? `${nums.length} números asignados` : 'Número asignado');
     if(res.sobra) msg += `. Sobró ${money(res.sobra,r)} del abono (no se registró).`;
-    toast(msg);
+    if(ab && asignados.length) setTimeout(() => ofrecerComprobante(r, asignados[0], msg), 80); else toast(msg);
   };
 }
 async function asignar(r, nums, datos, abono){
@@ -764,6 +765,7 @@ function detalleNumero(n){
     ${c && c.nums.length>1?`<p class="muted" style="font-size:13px">Sus números: ${c.nums.map(x=>fmtNum(r,x.num)).join(', ')}</p>`:''}
     <div class="acts" style="justify-content:flex-start">
       ${d.debe>EPS?'<button class="btn ok" id="dAbonar">+ Registrar abono</button>':''}
+      <button class="btn" id="dComp">🧾 Comprobante</button>
       <button class="btn" id="dEditar">Editar datos</button>
       ${wa && c?`<a class="btn" href="https://wa.me/${wa}?text=${encodeURIComponent(msgComprador(r,c))}" target="_blank" rel="noopener">WhatsApp</a>`:''}
       <button class="btn danger" id="dLiberar">Liberar número</button>
@@ -771,6 +773,7 @@ function detalleNumero(n){
   const ba = sh.querySelector('#dAbonar');
   if(ba) ba.onclick = () => formAbono(r, [d], `Abono al ${fmtNum(r,n)} (debe ${money(d.debe,r)})`);
   sh.querySelector('#dEditar').onclick = () => formNumero([n], d);
+  sh.querySelector('#dComp').onclick = () => ventanaComprobante(r, claveComp(d));
   sh.querySelectorAll('[data-chq]').forEach(b => b.onclick = () => {
     const i = Number(b.dataset.chq);
     const dest = (sh.querySelector(`[data-chqdest="${i}"]`)||{}).value;
@@ -851,8 +854,8 @@ function formAbono(r, numsInfo, titulo){
     try{
       for(const p of rep.partes){ const act = num(p.d.num); await guardarNum({ ...act, abonos:[...act.abonos, p.abono] }); }
       if(rep.partes.length) await registrar('abono', r, rep.partes.length===1?rep.partes[0].d.num:null, `Abono de ${fmtM(ab.monto,ab.moneda)}${ab.metodo?' ('+ab.metodo+(ab.referencia?' ref '+ab.referencia:'')+')':''} a ${rep.partes.map(p=>fmtNum(r,p.d.num)).join(', ')} · ${rep.partes[0].d.nombre}`, null);
-      cerrarModal();
-      toast(rep.sobra ? `Abono guardado. Sobró ${money(rep.sobra,r)} (ya estaba todo pagado).` : 'Abono guardado');
+      const msg = rep.sobra ? `Abono guardado. Sobró ${money(rep.sobra,r)} (ya estaba todo pagado).` : 'Abono guardado';
+      if(rep.partes.length) setTimeout(() => ofrecerComprobante(r, rep.partes[0].d.num, msg), 80); else { cerrarModal(); toast(msg); }
     }catch(e){ form.querySelector('button.pri').disabled = false; sh.querySelector('#errAb').textContent = errorTxt(e); }
   };
 }
@@ -1015,6 +1018,8 @@ document.addEventListener('click', async ev => {
     return formAbono(r, c.nums.filter(d => d.debe > EPS), `${c.nombre} · debe ${money(c.debe,r)}`);
   }
   if(t.id==='bCopLibres') return copiar(textoLibres(r));
+  if(t.id==='bCobrar') return ventanaCobrar(r);
+  if(t.dataset.compro !== undefined) return ventanaComprobante(r, claveComp(S._compVista[Number(t.dataset.compro)]));
   if(t.id==='bCSV') return exportarCSV(r);
   if(t.dataset.vergan){
     const pid = t.dataset.vergan; const p = r.premios.find(p => p.id === pid);
