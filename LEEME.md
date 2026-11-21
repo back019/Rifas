@@ -28,6 +28,7 @@ En la misma computadora, dentro de la base PouchDB de la app (carpeta de datos d
 - **Cobrar a todos** (pestaña Compradores): lista de los que deben con el mensaje de WhatsApp ya escrito (lo pendiente y lo que les falta para el próximo sorteo). Marca a quién ya le escribiste.
 - **Comprobante:** imagen tipo recibo con los números, lo pagado, lo pendiente y los sorteos. Se ofrece al registrar un abono, y está en el detalle de cada número y de cada comprador.
 - **Clientes** (botón 👥): junta a los compradores de todas las rifas para ver quién compra siempre y quién quedó debiendo. Al vender, el nombre se autocompleta con clientes anteriores y trae su teléfono.
+- **Flyer de lanzamiento** (botón 🖼️ → Lanzamiento): foto del premio, premios con fecha, lotería y % para jugar, precio en varias monedas, rango de números, formas de pago, contacto y QR opcional a WhatsApp. Vertical (estados) o cuadrado (publicaciones), y "Copiar texto" con el anuncio listo para pegar. Se ofrece al crear una rifa.
 - **Costos y ganancia** (pestaña Resumen): anota lo que costaron los premios y otros gastos para ver la ganancia real y cuántos números pagados hacen falta para cubrir los costos.
 - **Historial** (botón 🕘): todo lo que se cambió, con fecha y equipo. Liberar un número, borrar un abono, cambiar datos, eliminar una rifa, borrar un resultado o un costo se puede **deshacer** desde ahí. Se guardan los últimos 180 días.
 
@@ -39,6 +40,7 @@ En la misma computadora, dentro de la base PouchDB de la app (carpeta de datos d
 - `src/fusion.js`: une las versiones cuando la PC y el teléfono cambiaron lo mismo sin conexión.
 - `src/cobranza.js`: "Cobrar a todos" y el comprobante.
 - `src/clientes.js`: la libreta de clientes.
+- `src/flyer.js`: el flyer de lanzamiento. `src/vendor/qrcode.js`: librería qrcode-generator (MIT) para el QR.
 - `src/imagen.js`: genera la imagen para estados (progreso o números libres).
 - `src/inicio-local.js`: arranca la app con la base local, el respaldo automático, el aviso de versión nueva y el service worker del teléfono.
 - `src/version.json`: la versión publicada y sus novedades (el programa de la PC lo lee para avisar que hay una nueva).
