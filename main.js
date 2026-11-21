@@ -100,7 +100,8 @@ ipcMain.handle('copiar-imagen', async (ev, bytes) => {
 });
 
 // Siempre la misma carpeta de datos (la que usaba iniciar.bat), así el programa instalado ve las mismas rifas.
-app.setPath('userData', path.join(app.getPath('appData'), 'app-rifas'));
+// (RIFAS_DATOS permite usar otra carpeta para probar sin tocar las rifas reales.)
+app.setPath('userData', process.env.RIFAS_DATOS || path.join(app.getPath('appData'), 'app-rifas'));
 // Una sola ventana: si ya está abierta, se trae al frente.
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 app.on('second-instance', () => { const w = BrowserWindow.getAllWindows()[0]; if (w) { if (w.isMinimized()) w.restore(); w.focus(); } });
