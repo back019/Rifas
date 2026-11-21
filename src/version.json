@@ -1,0 +1,14 @@
+{
+  "version": "1.1.0",
+  "fecha": "2026-11-21",
+  "descarga": "https://github.com/back019/Rifas/releases/latest",
+  "notas": [
+    "Avisa cuando un número se vendió dos veces en equipos distintos y deja decidir a quién se queda.",
+    "No se pierden abonos al sincronizar la PC y el teléfono.",
+    "Historial de cambios con Deshacer (números liberados, abonos borrados, rifas eliminadas…).",
+    "Respaldo automático diario en la PC.",
+    "Cobrar a todos los que deben y comprobante de pago para el comprador.",
+    "Libreta de clientes de todas las rifas.",
+    "Costos y ganancia real de cada rifa."
+  ]
+}

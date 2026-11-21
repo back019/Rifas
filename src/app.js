@@ -301,7 +301,7 @@ function render(){
   if(!S.dbListo && !S.iniciado){ app.innerHTML = h + '<p class="muted">Cargando…</p>'; return; }
   if(!S.dbListo){ app.innerHTML = h + `<div class="card empty"><h3>No se pudo abrir la base de datos</h3><p class="muted">Cierra la app y vuelve a abrirla.</p></div>`; $('#multibar').innerHTML=''; return; }
   if(!S.rifasCargadas){ app.innerHTML = h + '<p class="muted">Cargando rifas…</p>'; return; }
-  h += S.rifaId ? vistaRifa() : (S.vista === 'clientes' ? vistaClientes() : avisoRespaldo() + vistaLista());
+  h += S.rifaId ? vistaRifa() : (S.vista === 'clientes' ? vistaClientes() : avisoActualizacion() + avisoRespaldo() + vistaLista());
   app.innerHTML = h;
   renderMultibar();
 }
@@ -1002,6 +1002,21 @@ function textoAuto(){
   const u = S.respaldo && S.respaldo.auto && S.respaldo.auto.ultimo();
   return u ? `Último respaldo automático: ${esc(fmtFechaHora(u.fecha))}` : 'Todavía no se ha hecho el primer respaldo automático (se hace unos segundos después de abrir la app).';
 }
+// Aviso de versión nueva del programa de Windows (S.actualizacion lo llena inicio-local.js).
+function avisoActualizacion(){
+  const a = S.actualizacion; if(!a) return '';
+  try{ if(localStorage.getItem('actualizacionLuego') === a.version) return ''; }catch(e){}
+  return `<div class="banner nuevo">🆕 Hay una versión nueva del programa: <b>${esc(a.version)}</b> (tienes la ${esc(a.actual)}). <button class="btn sm pri" id="bActualizar">Ver novedades</button></div>`;
+}
+function ventanaActualizacion(){
+  const a = S.actualizacion; if(!a) return;
+  const sh = modal(`<h2>Versión nueva: ${esc(a.version)}</h2>
+    <p class="muted">Tienes la versión ${esc(a.actual)}. Tus rifas no se pierden al actualizar: el programa nuevo usa la misma carpeta de datos.</p>
+    ${a.notas && a.notas.length ? `<ul>${a.notas.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
+    <ol class="muted" style="font-size:13px"><li>Toca "Descargar" y baja el archivo <b>Instalar-Rifas-${esc(a.version)}.exe</b>.</li><li>Cierra este programa y abre el instalador.</li></ol>
+    <div class="acts"><button class="btn" id="aLuego">Recordar después</button><a class="btn pri" href="${esc(a.descarga)}" target="_blank" rel="noopener">Descargar</a></div>`);
+  sh.querySelector('#aLuego').onclick = () => { try{ localStorage.setItem('actualizacionLuego', a.version); }catch(e){} cerrarModal(); render(); };
+}
 // En el teléfono sin sincronizar no hay respaldo automático: se recuerda guardar uno cada semana.
 function avisoRespaldo(){
   if(!S.respaldo || S.respaldo.auto || !S.rifas.length) return '';
@@ -1021,6 +1036,7 @@ function ventanaRespaldo(){
       <div class="muted" style="font-size:13px" id="rAutoTxt">${textoAuto()}</div>
       <div class="row" style="margin-top:8px"><button class="btn sm" id="rAutoYa">Hacer respaldo ahora</button><button class="btn sm" id="rAutoDir">Abrir carpeta</button></div></div>`
       : `<p class="muted" style="font-size:13px;margin-top:10px">${S.respaldo.ultimoManual() ? 'Último respaldo guardado en este equipo: ' + esc(fmtFechaHora(S.respaldo.ultimoManual())) : 'En este equipo todavía no has guardado un respaldo.'}${S.sync && S.sync.estado().cfg ? ' Como está sincronizado, la PC también guarda los respaldos automáticos.' : ''}</p>`}
+    ${S.version ? `<p class="muted" style="font-size:12px;margin-top:10px">Programa versión ${esc(S.version)}</p>` : ''}
     <div class="acts"><button class="btn" data-x>Cerrar</button></div>`);
   const ya = sh.querySelector('#rAutoYa');
   if(ya) ya.onclick = async () => {
@@ -1055,6 +1071,7 @@ document.addEventListener('click', async ev => {
   const r = rifa();
   if(t.id==='bNueva' || t.id==='bNueva2') return formRifa();
   if(t.id==='bRespaldo' || t.id==='bRespaldo2') return ventanaRespaldo();
+  if(t.id==='bActualizar') return ventanaActualizacion();
   if(t.id==='bTasas') return ventanaTasas();
   if(t.id==='bSync') return ventanaSync();
   if(t.id==='bHist') return ventanaHistorial(S.rifaId);

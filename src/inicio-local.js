@@ -11,6 +11,14 @@
     S.aviso = 'No se pudo abrir la base de datos local: ' + (e.message || e);
     iniciarApp(null);
   }
+  // En la PC: avisa si hay una versión nueva del programa (se revisa al abrir y cada 12 horas).
+  if (window.rifasNativo && window.rifasNativo.buscarActualizacion) {
+    const revisar = async () => {
+      try { const a = await window.rifasNativo.buscarActualizacion(); S.version = a.actual; S.actualizacion = a.hay ? a : null; render(); } catch (e) {}
+    };
+    setTimeout(revisar, 5000);
+    setInterval(revisar, 12 * 3600 * 1000);
+  }
   // En el teléfono (servida por https) se registra el service worker para que abra sin internet.
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     const habiaControl = !!navigator.serviceWorker.controller;

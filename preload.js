@@ -5,5 +5,6 @@ contextBridge.exposeInMainWorld('rifasNativo', {
   guardarImagen: (nombre, bytes) => ipcRenderer.invoke('guardar-imagen', nombre, bytes),
   copiarImagen: (bytes) => ipcRenderer.invoke('copiar-imagen', bytes),
   respaldoAuto: (contenido) => ipcRenderer.invoke('respaldo-auto', contenido),
-  abrirRespaldos: () => ipcRenderer.invoke('abrir-respaldos')
+  abrirRespaldos: () => ipcRenderer.invoke('abrir-respaldos'),
+  buscarActualizacion: () => ipcRenderer.invoke('buscar-actualizacion')
 });

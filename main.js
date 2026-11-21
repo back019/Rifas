@@ -1,5 +1,5 @@
 // Proceso principal de Electron: crea la ventana y maneja guardar archivos y abrir enlaces.
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, clipboard, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, clipboard, nativeImage, net } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 
@@ -71,6 +71,26 @@ ipcMain.handle('respaldo-auto', async (ev, contenido) => {
 ipcMain.handle('abrir-respaldos', async () => {
   await fs.mkdir(carpetaRespaldos(), { recursive: true });
   return shell.openPath(carpetaRespaldos());
+});
+
+// Aviso de versión nueva: compara la versión instalada con version.json publicado en GitHub Pages.
+const URL_VERSION = 'https://back019.github.io/Rifas/version.json';
+function compararVersiones(a, b) {
+  const pa = String(a).split('.').map(n => parseInt(n, 10) || 0), pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) { if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0) ? 1 : -1; }
+  return 0;
+}
+ipcMain.handle('buscar-actualizacion', async () => {
+  const actual = app.getVersion();
+  try {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 8000);
+    const r = await net.fetch(URL_VERSION + '?t=' + Date.now(), { signal: ctrl.signal, cache: 'no-store' });
+    clearTimeout(t);
+    if (!r.ok) return { actual, hay: false };
+    const v = await r.json();
+    const descarga = /^https:\/\//.test(v.descarga || '') ? v.descarga : 'https://github.com/back019/Rifas/releases/latest';
+    return { actual, hay: compararVersiones(v.version, actual) > 0, version: String(v.version || ''), notas: Array.isArray(v.notas) ? v.notas.map(String) : [], descarga };
+  } catch (e) { return { actual, hay: false }; }
 });
 
 // Copiar la imagen al portapapeles (para pegarla en WhatsApp Web con Ctrl+V).
