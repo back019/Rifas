@@ -75,13 +75,38 @@ function textoFlyer(r, op){
   const otras = op.otrasMonedas ? preciosOtrasMonedas(r) : [];
   t += `\n\n💵 Precio: ${money(r.precio, r)} por número${otras.length ? ' (' + otras.join(' · ') + ')' : ''}`;
   t += `\n🔢 ${rangoTxt(r)}`;
-  if(r.responsable) t += `\n👤 Responsable: ${r.responsable}`;
-  if(op.pagos) t += `\n💳 Formas de pago: ${op.pagos}`;
-  if(op.contacto) t += `\n📲 ${op.contacto}`;
-  const wa = urlWhatsFlyer(r, op);
-  if(wa) t += `\n👉 Aparta aquí: ${wa}`;
-  return t + `\n\n${op.frase || '¡Aparta el tuyo!'} 🍀`;
+  // Los campos de varias líneas se pegan tal cual los escribiste, cada línea en su renglón.
+  const bloque = (et, v) => { v = String(v || '').trim(); if(!v) return ''; return v.includes('\n') ? `\n${et}\n${v}` : `\n${et} ${v}`; };
+  t += bloque('👤 Responsable:', r.responsable);
+  t += bloque('💳 Formas de pago:', op.pagos);
+  t += bloque('📲 Contacto:', op.contacto);
+  // En el texto va el enlace corto (wa.me/número); el QR sí lleva el mensaje ya escrito.
+  const tel = telWa(op.whatsapp);
+  if(tel) t += `\n👉 Aparta aquí: https://wa.me/${tel}`;
+  if(String(op.extra || '').trim()) t += `\n\n${String(op.extra).trim()}`;
+  return t + `\n\n${String(op.frase || '¡Aparta el tuyo!').trim()} 🍀`;
 }
+
+// Ventana para ordenar y editar el anuncio antes de copiarlo. La versión editada se guarda en la rifa.
+function ventanaAnuncio(r, op){
+  const auto = textoFlyer(r, op);
+  const sh = modal(`<h2>📝 Texto para pegar</h2>
+    <p class="muted" style="margin-top:0;font-size:13px">Ordénalo y cámbialo a tu gusto (Enter para nueva línea). Se guarda en esta rifa.</p>
+    <textarea id="aTexto" class="crece" style="min-height:300px">${esc(r.anuncio || auto)}</textarea>
+    <div class="muted" id="aEstado" style="font-size:12px;margin-top:4px">${r.anuncio ? 'Texto editado por ti.' : 'Texto automático con los datos de la rifa.'}</div>
+    <div class="acts"><button class="btn" id="aVolver">← Volver al flyer</button><button class="btn" id="aAuto">Volver al texto automático</button><button class="btn pri" id="aCopiar">Copiar</button></div>`);
+  const ta = sh.querySelector('#aTexto'), est = sh.querySelector('#aEstado');
+  activarCrecer(sh);
+  let pend = null;
+  const guardar = valor => { clearTimeout(pend); pend = setTimeout(async () => { try{ await S.db.doc(`rifas/${r.id}`).update({ anuncio: valor }); }catch(e){} }, 500); };
+  ta.addEventListener('input', () => { r.anuncio = ta.value; est.textContent = 'Texto editado por ti (guardado).'; guardar(ta.value); });
+  sh.querySelector('#aAuto').onclick = () => { ta.value = auto; r.anuncio = null; est.textContent = 'Texto automático con los datos de la rifa.'; guardar(null); crecer(ta); };
+  sh.querySelector('#aCopiar').onclick = () => copiar(ta.value);
+  sh.querySelector('#aVolver').onclick = () => { clearTimeout(pend); if(r.anuncio !== undefined) S.db.doc(`rifas/${r.id}`).update({ anuncio: r.anuncio || null }).catch(()=>{}); ventanaImagen(r); };
+}
+// Los cuadros de texto crecen con lo que escribes.
+function crecer(ta){ ta.style.height = 'auto'; ta.style.height = (ta.scrollHeight + 2) + 'px'; }
+function activarCrecer(cont){ cont.querySelectorAll('textarea.crece').forEach(ta => { crecer(ta); ta.addEventListener('input', () => crecer(ta)); }); }
 
 // ---------- dibujo ----------
 function dibujarQR(ctx, texto, x, y, lado){
@@ -143,13 +168,47 @@ function dibujarDinero(ctx, T, x, y, w, h, rad, d){
   ctx.fillText('💰 PREMIO EN EFECTIVO', cx, y + h * 0.11);
   ctx.restore(); ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'center';
 }
-function pastilla(ctx, T, texto, cx, y, alto, tam, maxW){
-  ctx.font = f(800, tam);
-  const w = Math.min(maxW, ctx.measureText(texto).width + alto);
-  ctx.fillStyle = T.acento; rectRedondo(ctx, cx - w/2, y, w, alto, alto/2); ctx.fill();
-  ctx.fillStyle = '#1f1300'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(partirTexto(ctx, texto, w - 40, 1)[0] || texto, cx, y + alto/2 + 2);
-  ctx.textBaseline = 'alphabetic';
+
+// ---------- textos de varias líneas ----------
+// Respeta los saltos de línea que escribe el usuario: cada línea en su renglón y, si es larga, se parte.
+// Si no cabe en maxLineas, achica la letra hasta "min"; si aun así no cabe, corta con "…".
+// prefijo: se pone delante de la primera línea (por ejemplo "💳 ").
+function medirParrafos(ctx, texto, ancho, peso, tam, min, maxLineas, prefijo){
+  const parrafos = String(texto || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  if(!parrafos.length || maxLineas < 1) return { lineas: [], tam, peso, alto: 0, salto: 0 };
+  if(prefijo) parrafos[0] = prefijo + parrafos[0];
+  for(let t = tam; ; t -= 2){
+    ctx.font = f(peso, t);
+    let lineas = parrafos.flatMap(p => partirTexto(ctx, p, ancho, 99));
+    if(lineas.length <= maxLineas || t - 2 < min){
+      if(lineas.length > maxLineas){
+        lineas = lineas.slice(0, maxLineas);
+        let u = lineas[maxLineas - 1];
+        while(u.length > 1 && ctx.measureText(u + '…').width > ancho) u = u.slice(0, -1);
+        lineas[maxLineas - 1] = u + '…';
+      }
+      const salto = Math.round(t * 1.3);
+      return { lineas, tam: t, peso, salto, alto: lineas.length * salto };
+    }
+  }
+}
+// Dibuja lo medido; y es la línea base del primer renglón. Devuelve la y que sigue.
+function pintarParrafos(ctx, m, x, y){
+  ctx.font = f(m.peso, m.tam);
+  m.lineas.forEach((l, i) => ctx.fillText(l, x, y + i * m.salto));
+  return y + m.alto;
+}
+// Franja dorada con la frase (una o dos líneas).
+function medirPastilla(ctx, texto, tam, maxW, maxLineas){ return medirParrafos(ctx, texto, maxW - 70, 800, tam, Math.round(tam * 0.65), maxLineas); }
+const altoPastilla = m => m.alto + m.tam * 0.9;
+function pintarPastilla(ctx, T, m, cx, y, maxW){
+  ctx.font = f(m.peso, m.tam);
+  const w = Math.min(maxW, Math.max(0, ...m.lineas.map(l => ctx.measureText(l).width)) + 90);
+  const alto = altoPastilla(m);
+  ctx.fillStyle = T.acento; rectRedondo(ctx, cx - w/2, y, w, alto, Math.min(alto/2, 50)); ctx.fill();
+  ctx.fillStyle = '#1f1300'; ctx.textAlign = 'center';
+  pintarParrafos(ctx, m, cx, y + m.tam * 1.4);
+  return alto;
 }
 
 function dibujarFlyer(canvas, r, op){
@@ -177,21 +236,38 @@ function dibujarFlyer(canvas, r, op){
   if(cuadrado) return flyerCuadrado(ctx, r, op, T, { W, H, otros, mayor, img, otras, wa });
 
   // ----- vertical 1080x1920 -----
+  const resp = String(r.responsable || '').trim(), conQR = !!wa;
+  const anchoTxt = conQR ? W - 120 - 80 - 230 : W - 180;
+  // Se mide todo con unos topes de líneas; si no cabe ni achicando la foto, se bajan los topes poco a poco.
+  const topes = { lista: 3, extra: 4, pagos: 3, resp: 2, contacto: 2, frase: 2 };
+  const recortes = [['extra', 2], ['lista', 2], ['pagos', 2], ['extra', 1], ['lista', 1], ['resp', 1], ['contacto', 1], ['frase', 1], ['pagos', 1], ['lista', 0], ['extra', 0]];
+  ctx.font = f(800, 84); const lNombre = partirTexto(ctx, r.nombre, 960, 2);
+  ctx.font = f(800, 62); const lMayor = mayor ? partirTexto(ctx, '🏆 ' + mayor.nombre, 960, 2) : [];
+  const fy = 210 + lNombre.length * 92 - 30, hDet = mayor ? 50 : 0, PASO = 92;
+  const medir = () => {
+    const lista = otros.slice(0, topes.lista);
+    const hL = lista.length ? 34 + lista.length * PASO : 0;
+    const fr = medirPastilla(ctx, op.frase || '¡Aparta el tuyo!', 52, 960, topes.frase);
+    const ex = medirParrafos(ctx, op.extra, 940, 500, 34, 28, topes.extra);
+    const mr = medirParrafos(ctx, resp, anchoTxt, 800, 36, 30, topes.resp, '👤 Organiza: ');
+    const mp = medirParrafos(ctx, op.pagos, anchoTxt, 700, 36, 30, topes.pagos, '💳 ');
+    const mc = medirParrafos(ctx, op.contacto, anchoTxt, 700, 40, 32, topes.contacto);
+    const hayCard = !!(resp || op.pagos || op.contacto || conQR);
+    const hTxt = 40 + mr.alto + (mr.alto ? 10 : 0) + mp.alto + (mp.alto ? 10 : 0) + mc.alto + 20;
+    const hT = hayCard ? Math.max(conQR ? 260 : 0, hTxt) : 0;
+    const resto = 80 + lMayor.length * 70 + hDet - 10 + hL + (hL ? 90 : 50) + 56 + 70 + 40 + altoPastilla(fr) + (ex.alto ? 30 + ex.alto : 0) + 40;
+    const yT = H - 50 - hT;
+    return { lista, hL, fr, ex, mr, mp, mc, hayCard, hT, yT, fh: Math.min(620, yT - fy - resto) };
+  };
+  let m = medir();
+  // Primero se achica la foto (hasta 170); solo si no alcanza se recortan líneas de texto.
+  for(const [k, v] of recortes){ if(m.fh >= 170) break; if(topes[k] > v){ topes[k] = v; m = medir(); } }
+  const fh = Math.max(150, m.fh);
+
   ctx.fillStyle = T.acento; ctx.font = f(700, 40); ctx.fillText('🎟️  G R A N   R I F A', W/2, 110);
   ctx.fillStyle = T.texto; ctx.font = f(800, 84);
   let y = 210;
-  const lNombre = partirTexto(ctx, r.nombre, 960, 2);
   for(const l of lNombre){ ctx.fillText(l, W/2, y); y += 92; }
-  ctx.font = f(800, 62);
-  const lMayor = mayor ? partirTexto(ctx, '🏆 ' + mayor.nombre, 960, 2) : [];
-  const hDet = mayor ? 50 : 0;
-  // Los otros premios, cada uno en dos líneas: nombre y fecha / lotería y condición (hasta 3).
-  const lista = otros.slice(0, 3);
-  const PASO = 92, hL = lista.length ? 34 + lista.length * PASO : 0;
-  // La foto se achica si hace falta para que todo quepa sobre la tarjeta inferior.
-  const fy = y - 30;
-  const resto = 80 + lMayor.length * 70 + hDet - 10 + hL + (hL ? 90 : 50) + 56 + 70 + 40 + 100 + 30;
-  const fh = Math.max(240, Math.min(620, (H - 300) - fy - resto));
   if(img) dibujarFotoCover(ctx, img, 60, fy, W - 120, fh, 40); else marcoSinFoto(ctx, T, 60, fy, W - 120, fh, 40, mayor);
   y = fy + fh + 80;
   // Premio mayor
@@ -204,8 +280,8 @@ function dibujarFlyer(canvas, r, op){
   }
   // Lista de los otros premios
   const yL = y - 10;
-  if(hL){ ctx.fillStyle = 'rgba(255,255,255,0.12)'; rectRedondo(ctx, 60, yL, W - 120, hL, 28); ctx.fill(); }
-  lista.forEach((p, i) => {
+  if(m.hL){ ctx.fillStyle = 'rgba(255,255,255,0.12)'; rectRedondo(ctx, 60, yL, W - 120, m.hL, 28); ctx.fill(); }
+  m.lista.forEach((p, i) => {
     const y1 = yL + 58 + i * PASO;
     ctx.fillStyle = T.texto; ctx.font = f(700, 36);
     ctx.fillText(partirTexto(ctx, `📅 ${p.nombre} · ${p.fecha ? fmtFecha(p.fecha) : 'Fecha por anunciar'}`, W - 180, 1)[0], W/2, y1);
@@ -213,34 +289,27 @@ function dibujarFlyer(canvas, r, op){
     ctx.fillText(partirTexto(ctx, [p.loteria, condicionTxt(p)].filter(Boolean).join(' · '), W - 180, 1)[0], W/2, y1 + 38);
     ctx.globalAlpha = 1;
   });
-  y = hL ? yL + hL + 90 : y + 40;
-  // Precio
+  y = m.hL ? yL + m.hL + 90 : y + 40;
+  // Precio, rango, frase y texto adicional
   ctx.fillStyle = T.acento; ctx.font = f(800, 96); ctx.fillText(`${money(r.precio, r)}`, W/2, y);
   ctx.fillStyle = T.texto; ctx.font = f(600, 40); y += 56; ctx.fillText(otras.length ? `por número · ${otras.join(' · ')}` : 'por número', W/2, y);
   y += 70; ctx.font = f(600, 42); ctx.fillText(rangoTxt(r), W/2, y);
-  y += 40; pastilla(ctx, T, op.frase || '¡Aparta el tuyo!', W/2, y, 100, 52, 960);
-  // Tarjeta inferior: formas de pago, contacto y QR
-  const yT = H - 300, hT = 250, conQR = !!wa;
-  // La tarjeta solo se dibuja si hay algo que poner (formas de pago, contacto o QR).
-  const resp = String(r.responsable || '').trim();
-  if(resp || op.pagos || op.contacto || conQR){ ctx.fillStyle = 'rgba(255,255,255,0.14)'; rectRedondo(ctx, 60, yT, W - 120, hT, 36); ctx.fill(); }
-  const xTxt = conQR ? 100 : W/2, anchoTxt = conQR ? W - 120 - 80 - 230 : W - 180;
-  ctx.textAlign = conQR ? 'left' : 'center'; ctx.fillStyle = T.texto;
-  let yy = yT + 70;
-  if(resp){
-    // Si el nombre es largo, se achica la letra para que quepa completo.
-    const txt = '👤 Organiza: ' + resp; let tam = 36; ctx.font = f(800, tam);
-    while(tam > 24 && ctx.measureText(txt).width > anchoTxt){ tam -= 2; ctx.font = f(800, tam); }
-    ctx.fillText(partirTexto(ctx, txt, anchoTxt, 1)[0], xTxt, yy); yy += 52; ctx.fillStyle = T.texto;
-  }
-  if(op.pagos){ ctx.font = f(700, 36); for(const l of partirTexto(ctx, '💳 ' + op.pagos, anchoTxt, resp ? 1 : 2)){ ctx.fillText(l, xTxt, yy); yy += 46; } yy += 10; }
-  if(op.contacto){ ctx.font = f(700, 40); ctx.fillStyle = T.acento; for(const l of partirTexto(ctx, op.contacto, anchoTxt, 2)){ ctx.fillText(l, xTxt, yy); yy += 50; } }
+  y += 40; y += pintarPastilla(ctx, T, m.fr, W/2, y, 960);
+  if(m.ex.alto){ ctx.fillStyle = T.texto; ctx.globalAlpha = 0.92; pintarParrafos(ctx, m.ex, W/2, y + 30 + m.ex.tam); ctx.globalAlpha = 1; }
+  // Tarjeta inferior: responsable, formas de pago, contacto y QR
+  if(m.hayCard){ ctx.fillStyle = 'rgba(255,255,255,0.14)'; rectRedondo(ctx, 60, m.yT, W - 120, m.hT, 36); ctx.fill(); }
+  const xTxt = conQR ? 100 : W/2;
+  ctx.textAlign = conQR ? 'left' : 'center';
+  let yy = m.yT + 40;
+  if(m.mr.alto){ ctx.fillStyle = T.texto; yy = pintarParrafos(ctx, m.mr, xTxt, yy + m.mr.tam) - m.mr.tam + 10; }
+  if(m.mp.alto){ ctx.fillStyle = T.texto; yy = pintarParrafos(ctx, m.mp, xTxt, yy + m.mp.tam) - m.mp.tam + 10; }
+  if(m.mc.alto){ ctx.fillStyle = T.acento; pintarParrafos(ctx, m.mc, xTxt, yy + m.mc.tam); }
   if(conQR){
-    dibujarQR(ctx, wa, W - 60 - 30 - 200, yT + 25, 200);
-    ctx.textAlign = 'center'; ctx.fillStyle = T.texto; ctx.font = f(600, 22); ctx.fillText('Escanea y escríbeme', W - 60 - 30 - 100, yT + hT - 4);
+    dibujarQR(ctx, wa, W - 60 - 30 - 200, m.yT + 25, 200);
+    ctx.textAlign = 'center'; ctx.fillStyle = T.texto; ctx.font = f(600, 22); ctx.fillText('Escanea y escríbeme', W - 60 - 30 - 100, m.yT + 250);
   }
   ctx.textAlign = 'center';
-  return {};
+  return { fh, topes };
 }
 
 function flyerCuadrado(ctx, r, op, T, d){
@@ -269,18 +338,31 @@ function flyerCuadrado(ctx, r, op, T, d){
   ctx.fillStyle = T.texto; ctx.font = f(600, 26);
   const yp = Math.min(y, fy + fl - 50) + 40;
   for(const [i, l] of partirTexto(ctx, otras.length ? 'por número · ' + otras.join(' · ') : 'por número', wc, 2).entries()) ctx.fillText(l, xm, yp + i * 32);
-  // Franja inferior
-  const yF = fy + fl + 30;
-  ctx.font = f(600, 34); ctx.fillStyle = T.texto; ctx.fillText(rangoTxt(r), W/2, yF + 40);
-  pastilla(ctx, T, op.frase || '¡Aparta el tuyo!', W/2, yF + 65, 80, 42, 900);
-  const yB = yF + 170, conQR = !!wa, anchoTxt = conQR ? W - 100 - 200 : W - 100;
-  ctx.textAlign = conQR ? 'left' : 'center'; const xT = conQR ? 60 : W/2;
-  let yy = yB + 10;
+  // Franja inferior: rango, frase, texto adicional y abajo responsable / pagos / contacto (+ QR)
+  const yF = fy + fl + 30, conQR = !!wa, anchoTxt = conQR ? W - 100 - 200 : W - 100;
   const resp = String(r.responsable || '').trim();
-  if(resp){ ctx.font = f(800, 28); ctx.fillStyle = T.texto; ctx.fillText(partirTexto(ctx, '👤 Organiza: ' + resp, anchoTxt, 1)[0], xT, yy); yy += 42; }
-  if(op.pagos){ ctx.font = f(700, 30); ctx.fillStyle = T.texto; ctx.fillText(partirTexto(ctx, '💳 ' + op.pagos, anchoTxt, 1)[0], xT, yy); yy += 44; }
-  if(op.contacto){ ctx.font = f(700, 32); ctx.fillStyle = T.acento; ctx.fillText(partirTexto(ctx, op.contacto, anchoTxt, 1)[0], xT, yy); }
+  const topes = { frase: 2, extra: 2, resp: 2, pagos: 2, contacto: 2 };
+  const recortes = [['extra', 1], ['pagos', 1], ['resp', 1], ['contacto', 1], ['frase', 1], ['extra', 0]];
+  const medir = () => {
+    const fr = medirPastilla(ctx, op.frase || '¡Aparta el tuyo!', 42, 900, topes.frase);
+    const ex = medirParrafos(ctx, op.extra, 960, 500, 26, 22, topes.extra);
+    const mr = medirParrafos(ctx, resp, anchoTxt, 800, 28, 22, topes.resp, '👤 Organiza: ');
+    const mp = medirParrafos(ctx, op.pagos, anchoTxt, 700, 30, 22, topes.pagos, '💳 ');
+    const mc = medirParrafos(ctx, op.contacto, anchoTxt, 700, 32, 22, topes.contacto);
+    const fin = yF + 65 + altoPastilla(fr) + (ex.alto ? 14 + ex.alto : 0) + 24 + mr.alto + mp.alto + mc.alto;
+    return { fr, ex, mr, mp, mc, sobra: fin - (H - 25) };
+  };
+  let m = medir();
+  for(const [k, v] of recortes){ if(m.sobra <= 0) break; if(topes[k] > v){ topes[k] = v; m = medir(); } }
+  ctx.font = f(600, 34); ctx.fillStyle = T.texto; ctx.fillText(rangoTxt(r), W/2, yF + 40);
+  let yy = yF + 65 + pintarPastilla(ctx, T, m.fr, W/2, yF + 65, 900);
+  if(m.ex.alto){ ctx.fillStyle = T.texto; ctx.globalAlpha = 0.92; yy = pintarParrafos(ctx, m.ex, W/2, yy + 14 + m.ex.tam) - m.ex.tam; ctx.globalAlpha = 1; }
+  yy += 24;
+  ctx.textAlign = conQR ? 'left' : 'center'; const xT = conQR ? 60 : W/2;
+  if(m.mr.alto){ ctx.fillStyle = T.texto; yy = pintarParrafos(ctx, m.mr, xT, yy + m.mr.tam) - m.mr.tam; }
+  if(m.mp.alto){ ctx.fillStyle = T.texto; yy = pintarParrafos(ctx, m.mp, xT, yy + m.mp.tam) - m.mp.tam; }
+  if(m.mc.alto){ ctx.fillStyle = T.acento; pintarParrafos(ctx, m.mc, xT, yy + m.mc.tam); }
   if(conQR) dibujarQR(ctx, wa, W - 50 - 160, H - 50 - 160 + 10, 160);
   ctx.textAlign = 'center';
-  return {};
+  return { topes, sobra: m.sobra };
 }

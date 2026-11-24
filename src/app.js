@@ -514,12 +514,13 @@ function formRifa(r){
     </div>
     <div class="row" style="margin:6px 0 8px"><b class="grow">Premios</b><button type="button" class="btn sm" id="bAddPremio">+ Premio especial</button></div>
     <div id="premiosEd">${premiosOrden(normRifa(e)).map(filaPremio).join('')}</div>
-    <label class="f"><span>Responsable (quién organiza)</span><input type="text" name="responsable" value="${esc(r ? (r.responsable||'') : ultimoResponsable())}" placeholder="Nombre y, si quieres, cédula o teléfono"></label>
+    <label class="f"><span>Responsable (quién organiza)</span><textarea name="responsable" rows="1" class="crece" placeholder="Nombre y, si quieres, cédula o teléfono (Enter para otra línea)">${esc(r ? (r.responsable||'') : ultimoResponsable())}</textarea></label>
     <label class="f"><span>Notas</span><textarea name="notas">${esc(e.notas||'')}</textarea></label>
     <div id="errRifa" class="debe"></div>
     <div class="acts">${r?'<button type="button" class="btn danger" id="bBorrarRifa" style="margin-right:auto">Eliminar</button>':''}<button type="button" class="btn" data-x>Cancelar</button><button class="btn pri">Guardar</button></div>
   </form>`);
   const cont = sh.querySelector('#premiosEd');
+  activarCrecer(sh);
   sh.querySelector('#bAddPremio').onclick = () => {
     const n = cont.querySelectorAll('.premio-ed').length;
     cont.insertAdjacentHTML('afterbegin', filaPremio({ id:uid(), nombre:`Premio especial ${n}`, requisito:50, fecha:'', loteria:'' }));

@@ -125,3 +125,4 @@ table.hist tr.deshecho td{opacity:.55}
 /* Sin las flechitas de los campos de números (se ven fuera de lugar y cambian el valor sin querer con la rueda) */
 input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 input[type=number]{-moz-appearance:textfield;appearance:textfield}
+textarea.crece{min-height:44px;resize:vertical;overflow:hidden;line-height:1.35}

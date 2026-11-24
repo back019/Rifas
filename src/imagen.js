@@ -183,7 +183,7 @@ function ventanaImagen(r, forzar){
   // Si todavía no se ha vendido nada, se propone el flyer de lanzamiento.
   const base = S.raw.size === 0 && !(r.imagen && r.imagen.manual) ? 'lanzamiento' : 'progreso';
   const pref = { plantilla:base, tema:'dorado', contarApartados:true, mostrar:'pct', contacto: local.contacto || '',
-    tamano:'vertical', pagos: local.pagos || '', frase:'¡Aparta el tuyo!', whatsapp: local.whatsapp || '', qr:false, otrasMonedas:true, ...elegido, ...(forzar || {}) };
+    tamano:'vertical', pagos: local.pagos || '', frase:'¡Aparta el tuyo!', extra:'', whatsapp: local.whatsapp || '', qr:false, otrasMonedas:true, ...elegido, ...(forzar || {}) };
   const nativo = window.rifasNativo && window.rifasNativo.guardarImagen;
   const sh = modal(`<h2>Imagen para estados</h2>
     <div class="img-ed">
@@ -197,13 +197,14 @@ function ventanaImagen(r, forzar){
           <label class="f"><span>Tamaño</span><div class="seg">
             <label><input type="radio" name="tamano" value="vertical" ${pref.tamano!=='cuadrado'?'checked':''}>Vertical (estados)</label>
             <label><input type="radio" name="tamano" value="cuadrado" ${pref.tamano==='cuadrado'?'checked':''}>Cuadrado (publicación)</label></div></label>
-          <label class="f"><span>Responsable (quién organiza)</span><input type="text" name="responsable" value="${esc(r.responsable || '')}" placeholder="Nombre y, si quieres, cédula o teléfono"></label>
+          <label class="f"><span>Responsable (quién organiza)</span><textarea name="responsable" rows="1" class="crece" placeholder="Nombre y, si quieres, cédula o teléfono (Enter para otra línea)">${esc(r.responsable || '')}</textarea></label>
           <div class="f"><span class="muted" style="font-size:13px;display:block;margin-bottom:4px">Foto del premio</span>
             <span class="muted" style="font-size:12px;display:block;margin-bottom:6px">El producto, o billetes si es dinero. Sin foto, la app dibuja el premio.</span>
             <div class="row"><label class="btn sm">📷 <span id="iFotoTxt">${r.foto?'Cambiar foto':'Elegir foto'}</span><input type="file" id="iFoto" accept="image/*" hidden></label>
             <button type="button" class="btn sm danger" id="iQuitarFoto" ${r.foto?'':'hidden'}>Quitar</button><span class="muted" id="iFotoInfo" style="font-size:12px"></span></div></div>
-          <label class="f"><span>Formas de pago</span><input type="text" name="pagos" value="${esc(pref.pagos)}" placeholder="Pago móvil · Zelle · Binance · Efectivo"></label>
-          <label class="f"><span>Frase</span><input type="text" name="frase" value="${esc(pref.frase)}" placeholder="¡Aparta el tuyo!"></label>
+          <label class="f"><span>Formas de pago</span><textarea name="pagos" rows="1" class="crece" placeholder="Pago móvil · Zelle · Binance · Efectivo (Enter para otra línea)">${esc(pref.pagos)}</textarea></label>
+          <label class="f"><span>Frase (la franja dorada)</span><textarea name="frase" rows="1" class="crece" placeholder="¡Aparta el tuyo!">${esc(pref.frase)}</textarea></label>
+          <label class="f"><span>Texto adicional / condiciones (opcional)</span><textarea name="extra" rows="2" class="crece" placeholder="Ej.: El premio se entrega el 1 de diciembre.\nSi el número no está pagado completo, no participa.">${esc(pref.extra)}</textarea></label>
           <label class="row" style="margin-bottom:8px"><input type="checkbox" name="otrasMonedas" ${pref.otrasMonedas?'checked':''}> Mostrar el precio en otras monedas (con las tasas)</label>
           <label class="row" style="margin-bottom:6px"><input type="checkbox" name="qr" ${pref.qr?'checked':''}> Agregar QR que abre WhatsApp</label>
           <label class="f"><span>WhatsApp para el QR</span><input type="tel" name="whatsapp" value="${esc(pref.whatsapp)}" placeholder="0414-1234567"></label>
@@ -213,12 +214,12 @@ function ventanaImagen(r, forzar){
           <option value="cant" ${pref.mostrar==='cant'?'selected':''}>Cantidad (50 de 100)</option></select></label>
         <label class="f"><span>Color</span><select name="tema">${Object.keys(TEMAS).map(k=>`<option value="${k}" ${pref.tema===k?'selected':''}>${TEMAS[k].nombre || (k[0].toUpperCase()+k.slice(1))}</option>`).join('')}</select></label>
         <label class="row" data-no="lanzamiento" style="margin-bottom:10px"><input type="checkbox" name="contarApartados" ${pref.contarApartados?'checked':''}> Contar los apartados como vendidos</label>
-        <label class="f"><span>Texto de contacto (opcional)</span><input type="text" name="contacto" value="${esc(pref.contacto)}" placeholder="Escríbeme al 0414-1234567"></label>
+        <label class="f"><span>Texto de contacto (opcional)</span><textarea name="contacto" rows="1" class="crece" placeholder="Escríbeme al 0414-1234567">${esc(pref.contacto)}</textarea></label>
       </form>
     </div>
     <div class="acts">
       <button class="btn" data-x>Cerrar</button>
-      <button class="btn" id="iTexto" data-solo="lanzamiento">Copiar texto</button>
+      <button class="btn" id="iTexto" data-solo="lanzamiento">📝 Texto para pegar</button>
       ${nativo ? '<button class="btn" id="iCopiar">Copiar</button><button class="btn pri" id="iGuardar">Guardar imagen</button>'
                : '<button class="btn" id="iDescargar">Descargar</button><button class="btn pri" id="iCompartir">Compartir</button>'}
     </div>`);
@@ -229,7 +230,7 @@ function ventanaImagen(r, forzar){
   const opciones = () => ({
     plantilla: form.plantilla.value, tema: form.tema.value, mostrar: form.mostrar.value,
     contarApartados: form.contarApartados.checked, contacto: form.contacto.value.trim(),
-    tamano: form.tamano.value, pagos: form.pagos.value.trim(), frase: form.frase.value.trim(),
+    tamano: form.tamano.value, pagos: form.pagos.value.trim(), frase: form.frase.value.trim(), extra: form.extra.value.trim(),
     whatsapp: form.whatsapp.value.trim(), qr: form.qr.checked, otrasMonedas: form.otrasMonedas.checked
   });
   const redibujar = (manual) => {
@@ -282,7 +283,8 @@ function ventanaImagen(r, forzar){
     r.foto = null; info.textContent = ''; sh.querySelector('#iFotoTxt').textContent = 'Elegir foto'; sh.querySelector('#iQuitarFoto').hidden = true;
     redibujar(false);
   };
-  sh.querySelector('#iTexto').onclick = () => copiar(textoFlyer(r, opciones()));
+  sh.querySelector('#iTexto').onclick = () => ventanaAnuncio(r, opciones());
+  activarCrecer(sh);
 
   const nombreArchivo = () => `${form.plantilla.value === 'lanzamiento' ? 'flyer' : 'estado'}-${r.nombre.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')}.png`;
   const conBlob = async () => blob || await new Promise(res => cv.toBlob(res, 'image/png'));
