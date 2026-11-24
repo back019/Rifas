@@ -9,7 +9,7 @@
   "scripts": {
     "start": "electron .",
     "pruebas": "node --test pruebas/",
-    "instalador": "electron-builder --win nsis --x64 && node build/novedades.js"
+    "instalador": "electron-builder --win nsis --x64 && node build/novedades.js && node build/limpiar-dist.js"
   },
   "devDependencies": {
     "electron": "^45.0.0",

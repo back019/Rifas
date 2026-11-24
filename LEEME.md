@@ -65,7 +65,7 @@ El programa se actualiza solo, sin desinstalar ni perder datos:
 
 ## Publicar una versión nueva del programa
 1. Sube el número de versión en `package.json` y en `src/version.json` (el mismo número, por ejemplo 1.2.0) y escribe las novedades en `src/version.json`.
-2. Doble clic en `probar.bat` y luego en `crear-instalador.bat`. Deja en `dist` el instalador `Instalar-Rifas-X.Y.Z.exe` y `Novedades X.Y.Z.txt` (sale de `src/version.json`).
+2. Doble clic en `probar.bat` y luego en `crear-instalador.bat`. Deja en `dist` el instalador `Instalar-Rifas-X.Y.Z.exe` y `Novedades X.Y.Z.txt` (sale de `src/version.json`), y borra los instaladores de versiones anteriores para no acumular archivos.
 3. Listo para esta PC: la próxima vez que abras el programa (o con "Buscar actualización") aparece la ventana para actualizar.
 4. Para otras PCs (opcional): en GitHub, repositorio Rifas → Releases → "Draft a new release", ponle el número de versión y sube el `.exe`. Al subir los cambios a main (`publicar.bat`) se publica `version.json` y esas PCs ven el aviso con el enlace. El teléfono se actualiza solo.
 
