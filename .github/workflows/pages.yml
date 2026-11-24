@@ -18,11 +18,11 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Cambia la versión del service worker para que el teléfono baje lo nuevo.
       - run: sed -i "s/const VERSION = '[^']*'/const VERSION = 'rifas-${GITHUB_SHA::7}'/" src/sw.js
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: src
       - id: deploy
