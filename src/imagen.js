@@ -61,7 +61,7 @@ function dibujarImagen(canvas, r, op){
   const pct = total ? Math.round(vendidos / total * 100) : 0;
   const premios = premiosOrden(r);
   const mayor = premioMayor(r);
-  const prox = premios.find(p => !p.ganador);
+  const otros = premios.filter(p => p !== mayor);
 
   // Fondo con degradado y círculos decorativos
   const g = ctx.createLinearGradient(0, 0, IMG_W, IMG_H);
@@ -79,33 +79,38 @@ function dibujarImagen(canvas, r, op){
   ctx.fillStyle = T.texto; ctx.font = f(800, 92);
   let y = 270;
   for(const l of partirTexto(ctx, r.nombre, 940, 2)){ ctx.fillText(l, IMG_W/2, y); y += 104; }
+  // Premios arriba: el mayor destacado con su fecha, lotería y condición, y justo debajo los demás.
   if(mayor){
     ctx.font = f(600, 50);
     for(const l of partirTexto(ctx, '🏆 ' + mayor.nombre, 940, 2)){ ctx.fillText(l, IMG_W/2, y + 10); y += 62; }
+    ctx.globalAlpha = 0.88; ctx.font = f(500, 32);
+    ctx.fillText(partirTexto(ctx, detallePremio(mayor), 940, 1)[0] || '', IMG_W/2, y + 2); y += 46;
+    ctx.globalAlpha = 1;
   }
-  const yCuerpo = Math.max(y + 60, 520);
+  for(const p of otros.slice(0, 3)){
+    const mp = medirParrafos(ctx, `🥈 ${p.nombre} · ${detallePremio(p)}`, 940, 600, 36, 28, 2);
+    y = pintarParrafos(ctx, mp, IMG_W/2, y + 14) - mp.salto + 14 + mp.salto * 0.3;
+  }
+  const yCuerpo = Math.max(y + 50, 520);
 
-  if(op.plantilla === 'numeros') dibujarCuadricula(ctx, r, op, T, yCuerpo, 1500);
+  if(op.plantilla === 'numeros') dibujarCuadricula(ctx, r, op, T, yCuerpo, 1540);
   else dibujarProgreso(ctx, T, yCuerpo, { pct, vendidos, total, libres, mostrar: op.mostrar });
 
-  // Tarjeta inferior: precio, próximo sorteo y contacto. El contacto se parte en 2 líneas si es largo
-  // (y la tarjeta crece hacia abajo) en vez de cortarse.
+  // Tarjeta inferior: precio y contacto (los premios ya salen arriba). El contacto se parte en
+  // 2 líneas si es largo en vez de cortarse.
   const mc = medirParrafos(ctx, op.contacto, 900, 700, 42, 30, 2);
-  ctx.font = f(500, 38);
-  const det = prox ? `${prox.fecha ? fmtFecha(prox.fecha) : 'Fecha por anunciar'}${prox.requisito < 100 ? ` · juegas con ${prox.requisito}% abonado` : ''}` : '';
-  const lProx = prox ? partirTexto(ctx, `📅 ${prox.nombre}: ${det}`, 900, 2) : [];
-  const yT = 1530, hT = 300 + (mc.lineas.length > 1 && lProx.length > 1 ? 60 : 0);
+  const yT = 1560, hT = mc.alto ? 130 + mc.alto + 20 : 130;
   ctx.fillStyle = 'rgba(255,255,255,0.14)'; rectRedondo(ctx, 60, yT, IMG_W-120, hT, 36); ctx.fill();
   ctx.fillStyle = T.texto; ctx.font = f(700, 54);
   ctx.fillText(`💵 ${money(r.precio, r)} por número`, IMG_W/2, yT + 80);
-  ctx.font = f(500, 38);
-  lProx.forEach((l, i) => ctx.fillText(l, IMG_W/2, yT + 150 + i*48));
-  if(mc.alto){ ctx.fillStyle = T.acento; pintarParrafos(ctx, mc, IMG_W/2, yT + hT - 30 - (mc.lineas.length - 1) * mc.salto); }
+  if(mc.alto){ ctx.fillStyle = T.acento; pintarParrafos(ctx, mc, IMG_W/2, yT + 130 + mc.tam * 0.6); }
   return { pct, vendidos, total, libres, cortado: mc.cortado };
 }
 
 function dibujarProgreso(ctx, T, y0, d){
-  const cx = IMG_W/2, cy = y0 + 330, rad = 280, grosor = 60;
+  // El anillo se achica si arriba hay varios premios, para que todo quepa sobre la tarjeta.
+  const rad = Math.max(170, Math.min(280, (1530 - y0 - 295) / 2)), k = rad / 280;
+  const cx = IMG_W/2, cy = y0 + 50 + rad, grosor = Math.round(60 * k);
   // Anillo
   ctx.lineCap = 'round'; ctx.lineWidth = grosor;
   ctx.strokeStyle = 'rgba(255,255,255,0.18)';
@@ -116,15 +121,15 @@ function dibujarProgreso(ctx, T, y0, d){
   }
   ctx.fillStyle = T.texto; ctx.textBaseline = 'middle';
   if(d.mostrar === 'cant'){
-    ctx.font = f(800, 150); ctx.fillText(String(d.vendidos), cx, cy - 30);
-    ctx.font = f(600, 50); ctx.fillText(`de ${d.total} vendidos`, cx, cy + 80);
+    ctx.font = f(800, Math.round(150*k)); ctx.fillText(String(d.vendidos), cx, cy - 30*k);
+    ctx.font = f(600, Math.round(50*k)); ctx.fillText(`de ${d.total} vendidos`, cx, cy + 80*k);
   } else {
-    ctx.font = f(800, 190); ctx.fillText(d.pct + '%', cx, cy - 20);
-    ctx.font = f(600, 54); ctx.fillText('VENDIDO', cx, cy + 100);
+    ctx.font = f(800, Math.round(190*k)); ctx.fillText(d.pct + '%', cx, cy - 20*k);
+    ctx.font = f(600, Math.round(54*k)); ctx.fillText('VENDIDO', cx, cy + 100*k);
   }
   ctx.textBaseline = 'alphabetic';
   // Texto debajo del anillo
-  const yt = cy + rad + 105;
+  const yt = cy + rad + 95;
   ctx.font = f(600, 50); ctx.fillStyle = T.texto;
   ctx.fillText(`${d.vendidos} de ${d.total} números vendidos`, cx, yt);
   // Pastilla "quedan"
