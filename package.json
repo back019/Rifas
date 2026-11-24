@@ -1,6 +1,6 @@
 {
   "name": "app-rifas",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "description": "App para llevar el control de rifas (escritorio, luego teléfono)",
   "main": "main.js",
   "author": "Yixon",

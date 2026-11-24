@@ -1,4 +1,6 @@
 // Arranque de la versión local (Electron, o PWA en el teléfono): abre PouchDB y le pasa la base a la app.
+// En la PC el encabezado hace de barra de título (ver styles.css, body.escritorio).
+if (window.rifasNativo) document.body.classList.add('escritorio');
 (async () => {
   try {
     const db = await RifasDB.abrir();

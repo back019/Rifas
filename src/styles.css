@@ -126,3 +126,8 @@ table.hist tr.deshecho td{opacity:.55}
 input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 input[type=number]{-moz-appearance:textfield;appearance:textfield}
 textarea.crece{min-height:44px;resize:vertical;overflow:hidden;line-height:1.35}
+/* PC (Electron): el encabezado hace de barra de título. Se puede arrastrar la ventana desde él (doble clic
+   maximiza) y deja espacio a la derecha para los botones de minimizar, maximizar y cerrar. */
+body.escritorio header.top{-webkit-app-region:drag;height:60px;box-sizing:border-box;padding-right:max(150px, calc(12px + 100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)))}
+body.escritorio header.top button,body.escritorio header.top a,body.escritorio header.top input,body.escritorio header.top select,body.escritorio header.top label{-webkit-app-region:no-drag}
+body.escritorio .sheet h2{-webkit-app-region:no-drag}

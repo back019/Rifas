@@ -1,9 +1,9 @@
 {
-  "version": "1.1.6",
+  "version": "1.1.7",
   "fecha": "2026-11-24",
   "descarga": "https://github.com/back019/Rifas/releases/latest",
   "notas": [
-    "En las imágenes de Progreso y Números, el segundo premio (y los demás) sale justo debajo del premio mayor, con su fecha y condición, en vez de en la tarjeta de abajo.",
-    "La tarjeta de abajo queda solo con el precio y el contacto, y el anillo de progreso se ajusta para que todo quepa."
+    "Ventana integrada: ya no sale la barra gris de Windows. Los botones de minimizar, maximizar y cerrar quedan dentro del encabezado de la app, con sus mismos colores (claro u oscuro).",
+    "La ventana se mueve arrastrando el encabezado, y con doble clic se maximiza o se restaura."
   ]
 }

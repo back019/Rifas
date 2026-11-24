@@ -1,16 +1,28 @@
 // Proceso principal de Electron: crea la ventana y maneja guardar archivos y abrir enlaces.
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, clipboard, nativeImage, net } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, clipboard, nativeImage, net, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const fsSync = require('fs');
 const { spawn } = require('child_process');
 
+// Barra de título integrada: sin la barra gris de Windows; los botones de minimizar, maximizar y cerrar
+// se dibujan sobre el encabezado de la app, con sus mismos colores (claro u oscuro según Windows).
+const ALTO_BARRA = 59; // el encabezado mide 60: así se ve su línea inferior también bajo los botones
+const coloresBarra = () => nativeTheme.shouldUseDarkColors
+  ? { color: '#111318', symbolColor: '#e8eaef', height: ALTO_BARRA }
+  : { color: '#f4f5f7', symbolColor: '#1b1d22', height: ALTO_BARRA };
+nativeTheme.on('updated', () => {
+  for (const w of BrowserWindow.getAllWindows()) { try { w.setTitleBarOverlay(coloresBarra()); w.setBackgroundColor(coloresBarra().color); } catch (e) {} }
+});
+
 function crearVentana() {
   const win = new BrowserWindow({
     width: 1200, height: 800, minWidth: 380, minHeight: 600,
-    title: 'Rifas — Control',
+    title: 'Rifas',
     icon: path.join(__dirname, 'src', 'iconos', 'icono-512.png'),
-    backgroundColor: '#f4f5f7',
+    backgroundColor: coloresBarra().color,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: coloresBarra(),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -20,6 +32,8 @@ function crearVentana() {
     }
   });
   win.loadFile(path.join(__dirname, 'src', 'index.html'));
+  // El nombre de la ventana (barra de tareas) queda solo "Rifas".
+  win.on('page-title-updated', e => e.preventDefault());
 
   // Los enlaces (WhatsApp, etc.) se abren en el navegador normal, no dentro de la app.
   win.webContents.setWindowOpenHandler(({ url }) => {
