@@ -176,3 +176,19 @@ test('premioMayor sin la palabra "mayor": gana el que pide más %, y a igual % e
   ] })).id, 'conFecha');
   assert.equal(C.premioMayor(C.normRifa({ ...base, premios: [] })), null);
 });
+
+test('montoEnTexto: reconoce premios en dinero para dibujarlos en el flyer', () => {
+  assert.deepEqual(C.montoEnTexto('Premio mayor: 1.000.000 COP'), { monto: '1.000.000', moneda: 'COP' });
+  assert.deepEqual(C.montoEnTexto('🥈 Segundo premio: 200.000 COP'), { monto: '200.000', moneda: 'COP' });
+  assert.deepEqual(C.montoEnTexto('Especial $100'), { monto: '100', moneda: '$' });
+  assert.deepEqual(C.montoEnTexto('500 Bs'), { monto: '500', moneda: 'Bs' });
+  assert.deepEqual(C.montoEnTexto('200 mil pesos'), { monto: '200.000', moneda: 'COP' });
+  assert.deepEqual(C.montoEnTexto('1500000 en efectivo'), { monto: '1.500.000', moneda: '' });
+});
+
+test('montoEnTexto: un producto con números no es dinero', () => {
+  assert.equal(C.montoEnTexto('Moto Bera BR 200'), null);
+  assert.equal(C.montoEnTexto('iPhone 15 Pro 2025'), null);
+  assert.equal(C.montoEnTexto('Premio mayor'), null);
+  assert.equal(C.montoEnTexto(''), null);
+});

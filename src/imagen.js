@@ -197,7 +197,9 @@ function ventanaImagen(r, forzar){
           <label class="f"><span>Tamaño</span><div class="seg">
             <label><input type="radio" name="tamano" value="vertical" ${pref.tamano!=='cuadrado'?'checked':''}>Vertical (estados)</label>
             <label><input type="radio" name="tamano" value="cuadrado" ${pref.tamano==='cuadrado'?'checked':''}>Cuadrado (publicación)</label></div></label>
+          <label class="f"><span>Responsable (quién organiza)</span><input type="text" name="responsable" value="${esc(r.responsable || '')}" placeholder="Nombre y, si quieres, cédula o teléfono"></label>
           <div class="f"><span class="muted" style="font-size:13px;display:block;margin-bottom:4px">Foto del premio</span>
+            <span class="muted" style="font-size:12px;display:block;margin-bottom:6px">El producto, o billetes si es dinero. Sin foto, la app dibuja el premio.</span>
             <div class="row"><label class="btn sm">📷 <span id="iFotoTxt">${r.foto?'Cambiar foto':'Elegir foto'}</span><input type="file" id="iFoto" accept="image/*" hidden></label>
             <button type="button" class="btn sm danger" id="iQuitarFoto" ${r.foto?'':'hidden'}>Quitar</button><span class="muted" id="iFotoInfo" style="font-size:12px"></span></div></div>
           <label class="f"><span>Formas de pago</span><input type="text" name="pagos" value="${esc(pref.pagos)}" placeholder="Pago móvil · Zelle · Binance · Efectivo"></label>
@@ -249,6 +251,15 @@ function ventanaImagen(r, forzar){
       try{ await S.db.doc(`rifas/${r.id}`).update({ imagen: op }); guardado = j; }catch(e){}
     }, 600);
   };
+  // El responsable se guarda en la rifa (sale también en el comprobante) y se recuerda para la próxima rifa.
+  let pendResp = null;
+  form.responsable.addEventListener('input', () => {
+    r.responsable = form.responsable.value.trim();
+    clearTimeout(pendResp);
+    pendResp = setTimeout(async () => {
+      try{ await S.db.doc(`rifas/${r.id}`).update({ responsable: r.responsable }); recordarResponsable(r.responsable); }catch(e){}
+    }, 600);
+  });
   form.addEventListener('input', () => redibujar(true)); form.addEventListener('change', () => redibujar(true));
   redibujar(false);
 

@@ -100,4 +100,24 @@ function agruparCompradores(r, lista){
   }).sort((a,b)=> b.debe - a.debe || String(a.nombre).localeCompare(String(b.nombre)));
 }
 
-if(typeof module === 'object' && module.exports) module.exports = { uid, EPS, telWa, normRifa, totalCostos, ganancia, premiosOrden, premioMayor, proximoPremio, info, juega, tieneChoque, calcStats, repartir, agruparCompradores };
+// Si el nombre del premio es dinero ("1.000.000 COP", "$500", "200 mil pesos en efectivo"), devuelve
+// { monto, moneda } para dibujarlo en el flyer; si no (por ejemplo "Moto BR 200"), null.
+function montoEnTexto(t){
+  const s = String(t || '');
+  let moneda = '';
+  if(/\bCOP\b|pesos/i.test(s)) moneda = 'COP';
+  else if(/USDT/i.test(s)) moneda = 'USDT';
+  else if(/\bBs\b|bol[ií]vares/i.test(s)) moneda = 'Bs';
+  else if(/€|euros?\b/i.test(s)) moneda = '€';
+  else if(/\$|\bUSD\b|d[oó]lares/i.test(s)) moneda = '$';
+  const efectivo = /efectivo|dinero|cash/i.test(s);
+  if(!moneda && !efectivo) return null;
+  const m = s.match(/\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d+)?/);
+  if(!m) return null;
+  let monto = m[0];
+  if(/^\d+\s*mil\b/i.test(s.slice(m.index))) monto = (Number(monto) * 1000).toLocaleString('es-VE');
+  else if(/^\d{4,}$/.test(monto)) monto = Number(monto).toLocaleString('es-VE');
+  return { monto, moneda };
+}
+
+if(typeof module === 'object' && module.exports) module.exports = { uid, EPS, telWa, normRifa, totalCostos, ganancia, premiosOrden, premioMayor, montoEnTexto, proximoPremio, info, juega, tieneChoque, calcStats, repartir, agruparCompradores };

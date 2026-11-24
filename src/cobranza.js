@@ -81,7 +81,7 @@ function dibujarComprobante(cv, r, c){
   }
   const verAb = grupos.slice(0, 8);
   const pend = premiosOrden(r).filter(p => !p.ganador);
-  const H = 470 + c.nums.length*58 + 120 + (verAb.length ? 80 + verAb.length*54 : 0) + (pend.length ? 80 + pend.length*54 : 0) + 140;
+  const H = 470 + c.nums.length*58 + 120 + (verAb.length ? 80 + verAb.length*54 : 0) + (pend.length ? 80 + pend.length*54 : 0) + 140 + (r.responsable ? 50 : 0);
   cv.width = W; cv.height = H;
   const T = { bg:'#ffffff', tx:'#1b1d22', mu:'#6b7280', li:'#e5e7eb', pri:'#4f46e5', ok:'#16a34a', no:'#dc2626', ap:'#b45309' };
   ctx.fillStyle = T.bg; ctx.fillRect(0,0,W,H);
@@ -127,7 +127,9 @@ function dibujarComprobante(cv, r, c){
       y += 54;
     }
   }
-  ctx.textAlign = 'center'; ctx.font = '600 32px system-ui, sans-serif'; ctx.fillStyle = T.pri;
+  ctx.textAlign = 'center';
+  if(r.responsable){ ctx.font = '500 26px system-ui, sans-serif'; ctx.fillStyle = T.mu; ctx.fillText('Responsable: ' + r.responsable, W/2, H - 105); }
+  ctx.font = '600 32px system-ui, sans-serif'; ctx.fillStyle = T.pri;
   ctx.fillText('¡Gracias y suerte! 🍀', W/2, H - 60); ctx.textAlign = 'left';
 }
 

@@ -75,6 +75,7 @@ function textoFlyer(r, op){
   const otras = op.otrasMonedas ? preciosOtrasMonedas(r) : [];
   t += `\n\n💵 Precio: ${money(r.precio, r)} por número${otras.length ? ' (' + otras.join(' · ') + ')' : ''}`;
   t += `\n🔢 ${rangoTxt(r)}`;
+  if(r.responsable) t += `\n👤 Responsable: ${r.responsable}`;
   if(op.pagos) t += `\n💳 Formas de pago: ${op.pagos}`;
   if(op.contacto) t += `\n📲 ${op.contacto}`;
   const wa = urlWhatsFlyer(r, op);
@@ -101,11 +102,46 @@ function dibujarFotoCover(ctx, img, x, y, w, h, rad){
   ctx.drawImage(img, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih);
   ctx.restore();
 }
-function marcoSinFoto(ctx, T, x, y, w, h, rad){
+// Sin foto: si el premio mayor es dinero se dibuja el monto en billetes; si no, un trofeo.
+function marcoSinFoto(ctx, T, x, y, w, h, rad, premio){
+  const dinero = premio && montoEnTexto(premio.nombre);
+  if(dinero) return dibujarDinero(ctx, T, x, y, w, h, rad, dinero);
   ctx.fillStyle = 'rgba(255,255,255,0.10)'; rectRedondo(ctx, x, y, w, h, rad); ctx.fill();
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.font = f(400, Math.min(w, h) * 0.45); ctx.fillText('🏆', x + w/2, y + h/2);
   ctx.textBaseline = 'alphabetic';
+}
+function dibujarDinero(ctx, T, x, y, w, h, rad, d){
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.10)'; rectRedondo(ctx, x, y, w, h, rad); ctx.fill();
+  rectRedondo(ctx, x, y, w, h, rad); ctx.clip();
+  const cx = x + w/2, cy = y + h/2;
+  const bw = Math.min(w * 0.78, h * 1.6), bh = bw * 0.46;
+  // Fajo: billetes de atrás, girados
+  const billete = (ang, dx, dy, alfa) => {
+    ctx.save(); ctx.translate(cx + dx, cy + dy); ctx.rotate(ang * Math.PI / 180); ctx.globalAlpha = alfa;
+    const g = ctx.createLinearGradient(-bw/2, -bh/2, bw/2, bh/2); g.addColorStop(0, T.acento); g.addColorStop(1, '#a16207');
+    ctx.fillStyle = g; rectRedondo(ctx, -bw/2, -bh/2, bw, bh, bh * 0.08); ctx.fill();
+    ctx.strokeStyle = 'rgba(31,19,0,0.45)'; ctx.lineWidth = Math.max(2, bh * 0.02);
+    rectRedondo(ctx, -bw/2 + bh*0.07, -bh/2 + bh*0.07, bw - bh*0.14, bh - bh*0.14, bh * 0.05); ctx.stroke();
+    ctx.beginPath(); ctx.arc(-bw/2 + bh*0.42, 0, bh*0.24, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(bw/2 - bh*0.42, 0, bh*0.24, 0, Math.PI*2); ctx.stroke();
+    ctx.restore();
+  };
+  billete(-9, -bw*0.04, bh*0.10, 0.55);
+  billete(6, bw*0.04, bh*0.06, 0.75);
+  billete(0, 0, 0, 1);
+  // Monto grande sobre el billete de adelante
+  ctx.fillStyle = '#1f1300'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  let tam = bh * 0.42; ctx.font = f(900, tam);
+  while(tam > 12 && ctx.measureText(d.monto).width > bw * 0.62){ tam -= 2; ctx.font = f(900, tam); }
+  ctx.fillText(d.monto, cx, cy - bh * 0.06);
+  ctx.font = f(800, Math.max(14, bh * 0.15));
+  ctx.fillText(d.moneda ? d.moneda : 'EN EFECTIVO', cx, cy + bh * 0.27);
+  // Etiqueta arriba
+  ctx.fillStyle = T.texto; ctx.font = f(800, Math.max(16, h * 0.07));
+  ctx.fillText('💰 PREMIO EN EFECTIVO', cx, y + h * 0.11);
+  ctx.restore(); ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'center';
 }
 function pastilla(ctx, T, texto, cx, y, alto, tam, maxW){
   ctx.font = f(800, tam);
@@ -156,7 +192,7 @@ function dibujarFlyer(canvas, r, op){
   const fy = y - 30;
   const resto = 80 + lMayor.length * 70 + hDet - 10 + hL + (hL ? 90 : 50) + 56 + 70 + 40 + 100 + 30;
   const fh = Math.max(240, Math.min(620, (H - 300) - fy - resto));
-  if(img) dibujarFotoCover(ctx, img, 60, fy, W - 120, fh, 40); else marcoSinFoto(ctx, T, 60, fy, W - 120, fh, 40);
+  if(img) dibujarFotoCover(ctx, img, 60, fy, W - 120, fh, 40); else marcoSinFoto(ctx, T, 60, fy, W - 120, fh, 40, mayor);
   y = fy + fh + 80;
   // Premio mayor
   ctx.fillStyle = T.texto; ctx.font = f(800, 62);
@@ -186,11 +222,18 @@ function dibujarFlyer(canvas, r, op){
   // Tarjeta inferior: formas de pago, contacto y QR
   const yT = H - 300, hT = 250, conQR = !!wa;
   // La tarjeta solo se dibuja si hay algo que poner (formas de pago, contacto o QR).
-  if(op.pagos || op.contacto || conQR){ ctx.fillStyle = 'rgba(255,255,255,0.14)'; rectRedondo(ctx, 60, yT, W - 120, hT, 36); ctx.fill(); }
+  const resp = String(r.responsable || '').trim();
+  if(resp || op.pagos || op.contacto || conQR){ ctx.fillStyle = 'rgba(255,255,255,0.14)'; rectRedondo(ctx, 60, yT, W - 120, hT, 36); ctx.fill(); }
   const xTxt = conQR ? 100 : W/2, anchoTxt = conQR ? W - 120 - 80 - 230 : W - 180;
   ctx.textAlign = conQR ? 'left' : 'center'; ctx.fillStyle = T.texto;
   let yy = yT + 70;
-  if(op.pagos){ ctx.font = f(700, 36); for(const l of partirTexto(ctx, '💳 ' + op.pagos, anchoTxt, 2)){ ctx.fillText(l, xTxt, yy); yy += 46; } yy += 10; }
+  if(resp){
+    // Si el nombre es largo, se achica la letra para que quepa completo.
+    const txt = '👤 Organiza: ' + resp; let tam = 36; ctx.font = f(800, tam);
+    while(tam > 24 && ctx.measureText(txt).width > anchoTxt){ tam -= 2; ctx.font = f(800, tam); }
+    ctx.fillText(partirTexto(ctx, txt, anchoTxt, 1)[0], xTxt, yy); yy += 52; ctx.fillStyle = T.texto;
+  }
+  if(op.pagos){ ctx.font = f(700, 36); for(const l of partirTexto(ctx, '💳 ' + op.pagos, anchoTxt, resp ? 1 : 2)){ ctx.fillText(l, xTxt, yy); yy += 46; } yy += 10; }
   if(op.contacto){ ctx.font = f(700, 40); ctx.fillStyle = T.acento; for(const l of partirTexto(ctx, op.contacto, anchoTxt, 2)){ ctx.fillText(l, xTxt, yy); yy += 50; } }
   if(conQR){
     dibujarQR(ctx, wa, W - 60 - 30 - 200, yT + 25, 200);
@@ -207,7 +250,7 @@ function flyerCuadrado(ctx, r, op, T, d){
   ctx.fillText(partirTexto(ctx, r.nombre, 980, 1)[0] || r.nombre, W/2, 145);
   // Foto a la izquierda
   const fx = 50, fy = 185, fl = 470;
-  if(img) dibujarFotoCover(ctx, img, fx, fy, fl, fl, 32); else marcoSinFoto(ctx, T, fx, fy, fl, fl, 32);
+  if(img) dibujarFotoCover(ctx, img, fx, fy, fl, fl, 32); else marcoSinFoto(ctx, T, fx, fy, fl, fl, 32, mayor);
   // Columna derecha: premio, premios, precio
   const xc = fx + fl + 40, wc = W - xc - 50, xm = xc + wc/2;
   let y = fy + 50;
@@ -233,6 +276,8 @@ function flyerCuadrado(ctx, r, op, T, d){
   const yB = yF + 170, conQR = !!wa, anchoTxt = conQR ? W - 100 - 200 : W - 100;
   ctx.textAlign = conQR ? 'left' : 'center'; const xT = conQR ? 60 : W/2;
   let yy = yB + 10;
+  const resp = String(r.responsable || '').trim();
+  if(resp){ ctx.font = f(800, 28); ctx.fillStyle = T.texto; ctx.fillText(partirTexto(ctx, '👤 Organiza: ' + resp, anchoTxt, 1)[0], xT, yy); yy += 42; }
   if(op.pagos){ ctx.font = f(700, 30); ctx.fillStyle = T.texto; ctx.fillText(partirTexto(ctx, '💳 ' + op.pagos, anchoTxt, 1)[0], xT, yy); yy += 44; }
   if(op.contacto){ ctx.font = f(700, 32); ctx.fillStyle = T.acento; ctx.fillText(partirTexto(ctx, op.contacto, anchoTxt, 1)[0], xT, yy); }
   if(conQR) dibujarQR(ctx, wa, W - 50 - 160, H - 50 - 160 + 10, 160);

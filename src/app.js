@@ -484,6 +484,9 @@ function renderMultibar(){
 }
 
 // ---------- formulario de rifa ----------
+// El último responsable usado se propone en las rifas nuevas.
+function ultimoResponsable(){ try{ return localStorage.getItem('ultimoResponsable') || ''; }catch(e){ return ''; } }
+function recordarResponsable(v){ try{ if(v) localStorage.setItem('ultimoResponsable', v); }catch(e){} }
 function filaPremio(p){
   return `<div class="premio-ed" data-pid="${esc(p.id)}">
     <div class="row"><input type="text" class="grow" data-k="nombre" placeholder="Nombre del premio" value="${esc(p.nombre)}" required style="flex:1;min-width:0">
@@ -511,6 +514,7 @@ function formRifa(r){
     </div>
     <div class="row" style="margin:6px 0 8px"><b class="grow">Premios</b><button type="button" class="btn sm" id="bAddPremio">+ Premio especial</button></div>
     <div id="premiosEd">${premiosOrden(normRifa(e)).map(filaPremio).join('')}</div>
+    <label class="f"><span>Responsable (quién organiza)</span><input type="text" name="responsable" value="${esc(r ? (r.responsable||'') : ultimoResponsable())}" placeholder="Nombre y, si quieres, cédula o teléfono"></label>
     <label class="f"><span>Notas</span><textarea name="notas">${esc(e.notas||'')}</textarea></label>
     <div id="errRifa" class="debe"></div>
     <div class="acts">${r?'<button type="button" class="btn danger" id="bBorrarRifa" style="margin-right:auto">Eliminar</button>':''}<button type="button" class="btn" data-x>Cancelar</button><button class="btn pri">Guardar</button></div>
@@ -537,9 +541,10 @@ function formRifa(r){
     const datos = {
       nombre: f.get('nombre').trim(), precio: Number(f.get('precio'))||0, moneda: f.get('moneda'),
       cantidad: Math.min(1000, Math.max(2, parseInt(f.get('cantidad'))||100)), inicio: Number(f.get('inicio')),
-      notas: f.get('notas').trim(), premios
+      notas: f.get('notas').trim(), responsable: (f.get('responsable')||'').trim(), premios
     };
     datos.estado = premios.every(p => p.ganador) ? 'finalizada' : 'activa';
+    if(datos.responsable) recordarResponsable(datos.responsable);
     if(r){
       const fuera = numerosVendidos().filter(d => d.num < datos.inicio || d.num > datos.inicio + datos.cantidad - 1);
       if(fuera.length){ sh.querySelector('#errRifa').textContent = `No se puede: los números ${fuera.slice(0,8).map(d=>d.num).join(', ')} ya están vendidos y quedarían fuera del rango.`; return; }
