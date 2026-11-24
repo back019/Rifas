@@ -60,6 +60,7 @@ function preciosOtrasMonedas(r){
 }
 const rangoTxt = r => `Números del ${fmtNum(r, r.inicio)} al ${fmtNum(r, r.inicio + r.cantidad - 1)}`;
 const condicionTxt = p => p.requisito >= 100 ? 'número pagado completo' : `juegas con ${p.requisito}% abonado`;
+const detallePremio = p => [p.fecha ? fmtFecha(p.fecha) : 'Fecha por anunciar', p.loteria, condicionTxt(p)].filter(Boolean).join(' · ');
 function urlWhatsFlyer(r, op){
   const tel = telWa(op.whatsapp);
   return tel ? `https://wa.me/${tel}?text=${encodeURIComponent(`Hola, quiero apartar un número de la rifa "${r.nombre}"`)}` : '';
@@ -67,7 +68,8 @@ function urlWhatsFlyer(r, op){
 
 // Texto listo para pegar junto al flyer (WhatsApp, Instagram, grupos).
 function textoFlyer(r, op){
-  const ps = premiosOrden(r);
+  const may = premioMayor(r);
+  const ps = may ? [may, ...premiosOrden(r).filter(p => p !== may)] : premiosOrden(r);
   let t = `🎟️ ¡GRAN RIFA! ${r.nombre}\n\n🏆 ${ps.length > 1 ? 'Premios' : 'Premio'}:\n`;
   t += ps.map(p => `• ${p.nombre}${p.fecha ? ' — ' + fmtFecha(p.fecha) : ''}${p.loteria ? ' (' + p.loteria + ')' : ''} — ${condicionTxt(p)}`).join('\n');
   const otras = op.otrasMonedas ? preciosOtrasMonedas(r) : [];
@@ -99,13 +101,10 @@ function dibujarFotoCover(ctx, img, x, y, w, h, rad){
   ctx.drawImage(img, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih);
   ctx.restore();
 }
-function marcoSinFoto(ctx, T, x, y, w, h, rad, premio){
+function marcoSinFoto(ctx, T, x, y, w, h, rad){
   ctx.fillStyle = 'rgba(255,255,255,0.10)'; rectRedondo(ctx, x, y, w, h, rad); ctx.fill();
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.font = f(400, Math.min(w, h) * 0.38); ctx.fillText('🏆', x + w/2, y + h/2 - h*0.08);
-  ctx.fillStyle = T.texto; ctx.font = f(700, Math.max(28, Math.min(52, w / 16)));
-  const l = partirTexto(ctx, premio || '', w - 60, 1)[0] || '';
-  ctx.fillText(l, x + w/2, y + h*0.8);
+  ctx.font = f(400, Math.min(w, h) * 0.45); ctx.fillText('🏆', x + w/2, y + h/2);
   ctx.textBaseline = 'alphabetic';
 }
 function pastilla(ctx, T, texto, cx, y, alto, tam, maxW){
@@ -124,7 +123,9 @@ function dibujarFlyer(canvas, r, op){
   const ctx = canvas.getContext('2d');
   const T = TEMAS[op.tema] || TEMAS.dorado;
   const ps = premiosOrden(r);
-  const mayor = ps[ps.length - 1];
+  const mayor = premioMayor(r);
+  // Los demás premios van en la lista; el principal ya sale destacado arriba con sus datos.
+  const otros = ps.filter(p => p !== mayor);
   const img = fotoCargada(r.foto, op.alCargar);
   const otras = op.otrasMonedas ? preciosOtrasMonedas(r) : [];
   const wa = op.qr ? urlWhatsFlyer(r, op) : '';
@@ -137,7 +138,7 @@ function dibujarFlyer(canvas, r, op){
   ctx.beginPath(); ctx.arc(60, H - 120, cuadrado ? 200 : 320, 0, Math.PI*2); ctx.fill();
   ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
 
-  if(cuadrado) return flyerCuadrado(ctx, r, op, T, { W, H, ps, mayor, img, otras, wa });
+  if(cuadrado) return flyerCuadrado(ctx, r, op, T, { W, H, otros, mayor, img, otras, wa });
 
   // ----- vertical 1080x1920 -----
   ctx.fillStyle = T.acento; ctx.font = f(700, 40); ctx.fillText('🎟️  G R A N   R I F A', W/2, 110);
@@ -147,21 +148,27 @@ function dibujarFlyer(canvas, r, op){
   for(const l of lNombre){ ctx.fillText(l, W/2, y); y += 92; }
   ctx.font = f(800, 62);
   const lMayor = mayor ? partirTexto(ctx, '🏆 ' + mayor.nombre, 960, 2) : [];
-  // Cada premio en dos líneas: nombre y fecha / lotería y condición para jugar (hasta 4 premios).
-  const lista = ps.slice(-4);
-  const PASO = 92, hL = 34 + lista.length * PASO;
+  const hDet = mayor ? 50 : 0;
+  // Los otros premios, cada uno en dos líneas: nombre y fecha / lotería y condición (hasta 3).
+  const lista = otros.slice(0, 3);
+  const PASO = 92, hL = lista.length ? 34 + lista.length * PASO : 0;
   // La foto se achica si hace falta para que todo quepa sobre la tarjeta inferior.
   const fy = y - 30;
-  const resto = 80 + lMayor.length * 70 - 10 + hL + 90 + 56 + 70 + 40 + 100 + 30;
+  const resto = 80 + lMayor.length * 70 + hDet - 10 + hL + (hL ? 90 : 50) + 56 + 70 + 40 + 100 + 30;
   const fh = Math.max(240, Math.min(620, (H - 300) - fy - resto));
-  if(img) dibujarFotoCover(ctx, img, 60, fy, W - 120, fh, 40); else marcoSinFoto(ctx, T, 60, fy, W - 120, fh, 40, mayor && mayor.nombre);
+  if(img) dibujarFotoCover(ctx, img, 60, fy, W - 120, fh, 40); else marcoSinFoto(ctx, T, 60, fy, W - 120, fh, 40);
   y = fy + fh + 80;
   // Premio mayor
   ctx.fillStyle = T.texto; ctx.font = f(800, 62);
   for(const l of lMayor){ ctx.fillText(l, W/2, y); y += 70; }
-  // Lista de premios
+  if(mayor){
+    ctx.globalAlpha = 0.9; ctx.font = f(500, 34);
+    ctx.fillText(partirTexto(ctx, detallePremio(mayor), 960, 1)[0] || '', W/2, y - 14); ctx.globalAlpha = 1;
+    y += hDet;
+  }
+  // Lista de los otros premios
   const yL = y - 10;
-  ctx.fillStyle = 'rgba(255,255,255,0.12)'; rectRedondo(ctx, 60, yL, W - 120, hL, 28); ctx.fill();
+  if(hL){ ctx.fillStyle = 'rgba(255,255,255,0.12)'; rectRedondo(ctx, 60, yL, W - 120, hL, 28); ctx.fill(); }
   lista.forEach((p, i) => {
     const y1 = yL + 58 + i * PASO;
     ctx.fillStyle = T.texto; ctx.font = f(700, 36);
@@ -170,7 +177,7 @@ function dibujarFlyer(canvas, r, op){
     ctx.fillText(partirTexto(ctx, [p.loteria, condicionTxt(p)].filter(Boolean).join(' · '), W - 180, 1)[0], W/2, y1 + 38);
     ctx.globalAlpha = 1;
   });
-  y = yL + hL + 90;
+  y = hL ? yL + hL + 90 : y + 40;
   // Precio
   ctx.fillStyle = T.acento; ctx.font = f(800, 96); ctx.fillText(`${money(r.precio, r)}`, W/2, y);
   ctx.fillStyle = T.texto; ctx.font = f(600, 40); y += 56; ctx.fillText(otras.length ? `por número · ${otras.join(' · ')}` : 'por número', W/2, y);
@@ -178,7 +185,8 @@ function dibujarFlyer(canvas, r, op){
   y += 40; pastilla(ctx, T, op.frase || '¡Aparta el tuyo!', W/2, y, 100, 52, 960);
   // Tarjeta inferior: formas de pago, contacto y QR
   const yT = H - 300, hT = 250, conQR = !!wa;
-  ctx.fillStyle = 'rgba(255,255,255,0.14)'; rectRedondo(ctx, 60, yT, W - 120, hT, 36); ctx.fill();
+  // La tarjeta solo se dibuja si hay algo que poner (formas de pago, contacto o QR).
+  if(op.pagos || op.contacto || conQR){ ctx.fillStyle = 'rgba(255,255,255,0.14)'; rectRedondo(ctx, 60, yT, W - 120, hT, 36); ctx.fill(); }
   const xTxt = conQR ? 100 : W/2, anchoTxt = conQR ? W - 120 - 80 - 230 : W - 180;
   ctx.textAlign = conQR ? 'left' : 'center'; ctx.fillStyle = T.texto;
   let yy = yT + 70;
@@ -193,19 +201,22 @@ function dibujarFlyer(canvas, r, op){
 }
 
 function flyerCuadrado(ctx, r, op, T, d){
-  const { W, H, ps, mayor, img, otras, wa } = d;
+  const { W, H, otros, mayor, img, otras, wa } = d;
   ctx.fillStyle = T.acento; ctx.font = f(700, 30); ctx.fillText('🎟️  G R A N   R I F A', W/2, 70);
   ctx.fillStyle = T.texto; ctx.font = f(800, 62);
   ctx.fillText(partirTexto(ctx, r.nombre, 980, 1)[0] || r.nombre, W/2, 145);
   // Foto a la izquierda
   const fx = 50, fy = 185, fl = 470;
-  if(img) dibujarFotoCover(ctx, img, fx, fy, fl, fl, 32); else marcoSinFoto(ctx, T, fx, fy, fl, fl, 32, mayor && mayor.nombre);
+  if(img) dibujarFotoCover(ctx, img, fx, fy, fl, fl, 32); else marcoSinFoto(ctx, T, fx, fy, fl, fl, 32);
   // Columna derecha: premio, premios, precio
   const xc = fx + fl + 40, wc = W - xc - 50, xm = xc + wc/2;
   let y = fy + 50;
-  if(mayor){ ctx.fillStyle = T.texto; ctx.font = f(800, 44); for(const l of partirTexto(ctx, '🏆 ' + mayor.nombre, wc, 2)){ ctx.fillText(l, xm, y); y += 52; } }
-  ctx.font = f(500, 26); y += 6;
-  for(const p of ps.slice(-3)){
+  if(mayor){
+    ctx.fillStyle = T.texto; ctx.font = f(800, 44); for(const l of partirTexto(ctx, '🏆 ' + mayor.nombre, wc, 2)){ ctx.fillText(l, xm, y); y += 52; }
+    ctx.font = f(500, 26); for(const l of partirTexto(ctx, detallePremio(mayor), wc, 2)){ ctx.fillText(l, xm, y); y += 34; }
+  }
+  ctx.font = f(500, 26); y += 10;
+  for(const p of otros.slice(0, 2)){
     const det = [p.nombre, p.fecha ? fmtFecha(p.fecha) : '', p.loteria, condicionTxt(p)].filter(Boolean).join(' · ');
     for(const l of partirTexto(ctx, '📅 ' + det, wc, 2)){ ctx.fillText(l, xm, y); y += 34; }
     y += 6;

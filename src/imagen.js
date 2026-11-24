@@ -60,7 +60,7 @@ function dibujarImagen(canvas, r, op){
   const libres = total - lista.length;
   const pct = total ? Math.round(vendidos / total * 100) : 0;
   const premios = premiosOrden(r);
-  const mayor = premios[premios.length - 1];
+  const mayor = premioMayor(r);
   const prox = premios.find(p => !p.ganador);
 
   // Fondo con degradado y círculos decorativos

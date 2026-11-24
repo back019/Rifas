@@ -1,10 +1,10 @@
 {
-  "version": "1.1.1",
+  "version": "1.1.2",
   "fecha": "2026-11-24",
   "descarga": "https://github.com/back019/Rifas/releases/latest",
   "notas": [
-    "Se quitaron las flechitas de los campos de números (precio, montos, tasas) que se veían fuera de lugar en el tema oscuro.",
-    "La rueda del ratón ya no cambia sin querer un monto mientras escribes.",
-    "Los controles (calendario, listas) siguen el tema claro u oscuro de la app."
+    "Flyer: el premio mayor sale destacado aunque otro premio no tenga fecha, y ningún premio se repite.",
+    "Flyer: el recuadro sin foto ya no repite el premio y no sale una tarjeta vacía si no pusiste formas de pago ni contacto.",
+    "Se quitaron las flechitas de los campos de números y la rueda del ratón ya no cambia montos sin querer."
   ]
 }

@@ -155,3 +155,24 @@ test('ganancia: cobrado menos costos y números para cubrir costos', () => {
   assert.equal(g.equilibrio, 3);
   assert.equal(C.ganancia(rifaBase(), { cobrado: 0, potencial: 1000 }).equilibrio, 0);
 });
+
+test('premioMayor: un segundo premio sin fecha no le gana al premio mayor (caso real del flyer)', () => {
+  const r = C.normRifa({ nombre: 'Arranque navideño', precio: 20000, moneda: 'COP', premios: [
+    { id: 'a', nombre: '🥈 Segundo premio: 200.000 COP', requisito: 50, fecha: '' },
+    { id: 'b', nombre: 'Premio mayor: 1.000.000 COP', requisito: 100, fecha: '2026-11-30' }
+  ] });
+  assert.equal(C.premioMayor(r).id, 'b');
+});
+
+test('premioMayor sin la palabra "mayor": gana el que pide más %, y a igual % el de fecha más tardía', () => {
+  const base = { nombre: 'R', precio: 10 };
+  assert.equal(C.premioMayor(C.normRifa({ ...base, premios: [
+    { id: 'moto', nombre: 'Moto', requisito: 100, fecha: '2026-12-20' },
+    { id: 'tel', nombre: 'Teléfono', requisito: 50, fecha: '' }
+  ] })).id, 'moto');
+  assert.equal(C.premioMayor(C.normRifa({ ...base, premios: [
+    { id: 'sinFecha', nombre: 'Efectivo', requisito: 100, fecha: '' },
+    { id: 'conFecha', nombre: 'Moto', requisito: 100, fecha: '2026-12-20' }
+  ] })).id, 'conFecha');
+  assert.equal(C.premioMayor(C.normRifa({ ...base, premios: [] })), null);
+});

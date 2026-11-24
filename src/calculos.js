@@ -32,7 +32,20 @@ function ganancia(r, s){
 function premiosOrden(r){
   return [...r.premios].sort((a,b) => (a.fecha||'9999').localeCompare(b.fecha||'9999') || a.requisito - b.requisito);
 }
-function premioMayor(r){ const ps = premiosOrden(r); return ps[ps.length-1]; }
+// El premio principal: el que se llama "mayor"; si ninguno, el que pide más % para jugar y,
+// a igual %, el de fecha más tardía (un premio sin fecha no le gana a uno con fecha).
+function premioMayor(r){
+  const ps = (r && r.premios) || [];
+  if(!ps.length) return null;
+  const porNombre = ps.filter(p => /\bmayor\b/i.test(String(p.nombre || '')));
+  const cand = porNombre.length ? porNombre : ps;
+  return cand.reduce((m, p) => {
+    if(!m) return p;
+    const rq = (Number(p.requisito)||0) - (Number(m.requisito)||0);
+    if(rq) return rq > 0 ? p : m;
+    return String(p.fecha || '') > String(m.fecha || '') ? p : m;
+  }, null);
+}
 function proximoPremio(r){ return premiosOrden(r).find(p => !p.ganador) || null; }
 
 // Calcula abonado, % y estado de un número a partir de su historial de abonos.
