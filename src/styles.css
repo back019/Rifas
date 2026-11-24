@@ -105,3 +105,24 @@ fieldset.abono legend{font-size:13px;color:var(--muted);padding:0 4px}
 .img-prev canvas{width:100%;max-width:340px;height:auto;border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,.18)}
 @media (max-width:640px){.img-ed{grid-template-columns:1fr}.img-prev canvas{max-width:260px}}
 .sheet.ancho .acts{position:sticky;bottom:calc(-16px - env(safe-area-inset-bottom));background:var(--card);margin:12px -16px calc(-16px - env(safe-area-inset-bottom));padding:10px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
+.n.choque{box-shadow:inset 0 0 0 3px var(--danger)}
+.n.choque::before{content:"!";position:absolute;top:2px;right:5px;font-size:12px;color:var(--danger);font-weight:800}
+.banner.alerta,.card.alerta{background:#fee2e2;color:#7f1d1d;border-color:#fca5a5}
+@media (prefers-color-scheme:dark){.banner.alerta,.card.alerta{background:#3b1212;color:#fecaca;border-color:#7f1d1d}}
+.card.alerta .muted{color:inherit;opacity:.8}
+table.hist td:first-child{width:30%;white-space:nowrap}
+table.hist tr.deshecho td{opacity:.55}
+.card.cobro.enviado{opacity:.7}
+.ok-txt{color:var(--pag);font-weight:600}
+.card.cli{cursor:pointer}
+.card.cli h4{margin:0 0 4px;font-size:16px}
+.banner.nuevo{background:#e0e7ff;color:#312e81}
+@media (prefers-color-scheme:dark){.banner.nuevo{background:#1e1b4b;color:#c7d2fe}}
+.card.novedades{white-space:pre-wrap;font-size:14px;max-height:40vh;overflow:auto;margin-bottom:8px}
+/* Controles nativos (calendario, listas, barras) con el mismo tema claro u oscuro de la app */
+:root{color-scheme:light}
+@media (prefers-color-scheme:dark){:root{color-scheme:dark}}
+/* Sin las flechitas de los campos de números (se ven fuera de lugar y cambian el valor sin querer con la rueda) */
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+input[type=number]{-moz-appearance:textfield;appearance:textfield}
+textarea.crece{min-height:44px;resize:vertical;overflow:hidden;line-height:1.35}

@@ -1,0 +1,10 @@
+{
+  "version": "1.1.5",
+  "fecha": "2026-11-24",
+  "descarga": "https://github.com/back019/Rifas/releases/latest",
+  "notas": [
+    "El texto de contacto ya no se corta: en Progreso y Números se parte en dos líneas, y en el flyer se ajusta en varias líneas.",
+    "En el flyer, si el texto no cabe se achica primero la foto y luego un poco la letra; solo al final se corta.",
+    "Aviso en la ventana cuando algún texto no cabe completo (por ejemplo en el formato cuadrado)."
+  ]
+}

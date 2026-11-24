@@ -1,6 +1,6 @@
 {
   "name": "app-rifas",
-  "version": "1.0.0",
+  "version": "1.1.5",
   "description": "App para llevar el control de rifas (escritorio, luego teléfono)",
   "main": "main.js",
   "author": "Yixon",
@@ -8,7 +8,8 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "instalador": "electron-builder --win nsis --x64"
+    "pruebas": "node --test pruebas/",
+    "instalador": "electron-builder --win nsis --x64 && node build/novedades.js && node build/limpiar-dist.js"
   },
   "devDependencies": {
     "electron": "^45.0.0",
@@ -55,7 +56,8 @@
       "installerHeaderIcon": "build/icon.ico",
       "deleteAppDataOnUninstall": false,
       "artifactName": "Instalar-Rifas-${version}.exe",
-      "language": "3082"
+      "language": "3082",
+      "include": "build/instalador.nsh"
     },
     "publish": null
   }

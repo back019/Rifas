@@ -5,11 +5,9 @@
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const nowISO = () => new Date().toISOString();
-const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const clientId = 'c' + Math.random().toString(36).slice(2);
 const METODOS = ['Pago móvil','Transferencia','Efectivo','Zelle','Binance','Otro'];
 const MONEDAS = ['$','Bs','COP','€','USDT'];
-const EPS = 0.005;
 
 const S = {
   db:null, downloads:null, dbListo:false,
@@ -17,7 +15,8 @@ const S = {
   tasas:{ '$':1, 'USDT':1 }, tasasFecha:'',
   rifaId:null, raw:new Map(), numsCargados:false,
   tab:'numeros', filtro:'todos', q:'', qComp:'',
-  multi:false, sel:new Set(), unsubNums:null, aviso:''
+  multi:false, sel:new Set(), unsubNums:null, aviso:'',
+  vista:'rifas', numsPorRifa:{}, statsListas:false, qCli:'', filtroCli:'todos'
 };
 
 function rifa(){ const r = S.rifas.find(r => r.id === S.rifaId); return r || null; }
@@ -36,13 +35,6 @@ const money = (v, r) => fmtM(v, (r && r.moneda) || '$');
 const pctTxt = p => (Math.floor(p * 10) / 10).toLocaleString('es-VE') + '%';
 function fmtFecha(f){ if(!f) return ''; const d = new Date(f.length<=10 ? f+'T00:00:00' : f); return isNaN(d) ? f : d.toLocaleDateString('es-VE',{day:'2-digit',month:'short',year:'numeric'}) }
 function fmtFechaHora(f){ if(!f) return ''; const d=new Date(f); return isNaN(d)?f:d.toLocaleString('es-VE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) }
-function telWa(t){
-  let d = String(t||'').replace(/\D/g,'');
-  if(!d) return '';
-  if(d.startsWith('0')) d = '58' + d.slice(1);
-  else if(d.length === 10 && d.startsWith('4')) d = '58' + d;
-  return d;
-}
 function toast(msg){
   document.querySelectorAll('.toast').forEach(x=>x.remove());
   const t = document.createElement('div'); t.className='toast'; t.textContent=msg;
@@ -73,45 +65,8 @@ function tasaEntre(m, base){
 }
 
 // ---------- modelo ----------
-function normRifa(r){
-  const o = { ...r };
-  o.cantidad = Number(o.cantidad)||100; o.inicio = Number(o.inicio)||0; o.precio = Number(o.precio)||0; o.moneda = o.moneda || '$';
-  if(!Array.isArray(o.premios)){
-    o.premios = [{ id:'p1', nombre: o.premio || 'Premio mayor', requisito:100, fecha:o.fecha||'', loteria:o.loteria||'', ganador: o.ganador ? { ...o.ganador, juega:true } : null }];
-  }
-  o.premios = o.premios.map(p => ({ ...p, requisito: Number(p.requisito)||0 }));
-  return o;
-}
-function premiosOrden(r){
-  return [...r.premios].sort((a,b) => (a.fecha||'9999').localeCompare(b.fecha||'9999') || a.requisito - b.requisito);
-}
-function premioMayor(r){ const ps = premiosOrden(r); return ps[ps.length-1]; }
-function proximoPremio(r){ return premiosOrden(r).find(p => !p.ganador) || null; }
-
-// Calcula abonado, % y estado de un número a partir de su historial de abonos.
-function info(r, d){
-  if(!d) return null;
-  const precio = r.precio;
-  let abonos = d.abonos;
-  if(!Array.isArray(abonos)){ // datos de la versión anterior
-    const ab = d.estado === 'pagado' ? precio : Math.min(Number(d.abonado)||0, precio);
-    abonos = ab > 0 ? [{ id:'m', monto:ab, moneda:r.moneda, tasa:1, equiv:ab, metodo:d.metodo||'', referencia:d.referencia||'', fecha:d.fecha||'' }] : [];
-  }
-  const abonado = abonos.reduce((s,a) => s + (Number(a.equiv)||0), 0);
-  const pct = precio > 0 ? Math.min(100, abonado / precio * 100) : 100;
-  const estado = abonado >= precio - EPS ? 'pagado' : 'apartado';
-  return { ...d, num:Number(d.num), abonos, abonado, pct, debe: Math.max(0, precio - abonado), estado };
-}
 function num(n){ const r = rifa(); return r ? info(r, S.raw.get(n)) : null; }
 function numerosVendidos(){ const r = rifa(); return [...S.raw.values()].map(d => info(r, d)).sort((a,b)=>a.num-b.num); }
-function juega(p, inf){ return !!inf && inf.pct + 1e-9 >= p.requisito; }
-
-function calcStats(r, lista){
-  let pag=0, apa=0, cobrado=0;
-  for(const d of lista){ if(d.estado==='pagado') pag++; else apa++; cobrado += Math.min(d.abonado, r.precio); }
-  const vendidos = pag + apa;
-  return { total:r.cantidad, pag, apa, libres:r.cantidad-vendidos, cobrado, porCobrar: vendidos*r.precio - cobrado, potencial: r.cantidad*r.precio };
-}
 
 // ---------- modal ----------
 function modal(html){
@@ -144,6 +99,7 @@ function iniciarDB(){
     if(!S.rifaId) cargarStatsLista();
     render();
   }, err => { clearTimeout(timer); S.aviso = 'No se pudo leer la base de datos ('+err.code+').'; S.rifasCargadas=true; render(); });
+  setTimeout(limpiarHistorial, 20000);
   S.db.doc('config/tasas').onSnapshot(s => {
     if(s.exists){ const d = s.data(); S.tasas = { ...S.tasas, ...(d.tasas||{}), '$':1 }; S.tasasFecha = d.actualizado||''; }
     render();
@@ -157,9 +113,11 @@ function cargarStatsLista(){
     for(const r of S.rifas){
       try{
         const q = await S.db.collection(`rifas/${r.id}/numeros`).limit(1000).get();
-        S.stats[r.id] = calcStats(r, q.docs.map(d=>d.data()).filter(d => d && d.nombre).map(d => info(r, d)));
+        const lista = q.docs.map(d=>d.data()).filter(d => d && d.nombre).map(d => info(r, d));
+        S.stats[r.id] = calcStats(r, lista); S.numsPorRifa[r.id] = lista;
       }catch(e){}
     }
+    S.statsListas = true;
     if(!S.rifaId) render();
   }, 300);
 }
@@ -191,6 +149,96 @@ async function guardarNum(d){
   await refNum(d.num).set(limpio);
 }
 
+// ---------- historial ----------
+// Cada cambio importante queda anotado en historial/<id>. Los que se pueden deshacer
+// guardan en "deshacer" lo necesario para volver atrás (por ejemplo el número liberado completo).
+const EQUIPO = (typeof window !== 'undefined' && window.rifasNativo) ? 'PC' : 'Teléfono';
+const DIAS_HISTORIAL = 180;
+const histId = () => new Date().toISOString().replace(/[-:.TZ]/g,'') + Math.random().toString(36).slice(2,6);
+async function registrar(tipo, r, n, texto, deshacer){
+  try{
+    await S.db.doc(`historial/${histId()}`).set({ tipo, rifaId: r ? r.id : '', rifaNombre: r ? r.nombre : '', num: n ?? null,
+      texto, deshacer: deshacer || null, deshecho:false, equipo:EQUIPO, fecha: nowISO() });
+  }catch(e){ console.warn('Historial:', e); }
+}
+async function limpiarHistorial(){
+  try{
+    const lim = new Date(Date.now() - DIAS_HISTORIAL*864e5).toISOString();
+    const q = await S.db.collection('historial').get();
+    for(const d of q.docs){ const x = d.data(); if(x && x.fecha && x.fecha < lim) await S.db.doc(`historial/${d.id}`).delete(); }
+  }catch(e){}
+}
+
+async function deshacer(id){
+  const ref = S.db.doc(`historial/${id}`);
+  const s = await ref.get(); if(!s.exists) return;
+  const h = s.data(); const u = h.deshacer;
+  if(!u || h.deshecho) return toast('Esto ya no se puede deshacer');
+  const refN = n => S.db.doc(`rifas/${h.rifaId}/numeros/${n}`);
+  const rifaExiste = async () => (await S.db.doc(`rifas/${h.rifaId}`).get()).exists;
+  const leerNum = async n => { const x = await refN(n).get(); return x.exists && x.data() && x.data().nombre ? x.data() : null; };
+  try{
+    if(u.tipo === 'rifa'){
+      if(await rifaExiste()) return toast('Esa rifa ya existe');
+      await S.db.doc(`rifas/${h.rifaId}`).set(u.rifa);
+      for(const d of (u.numeros||[])) await refN(d.num).set(d);
+    } else {
+      if(!await rifaExiste()) return toast('La rifa ya no existe. Primero recupera la rifa.');
+      if(u.tipo === 'liberar'){
+        if(await leerNum(u.num)) return toast('Ese número ya se volvió a vender; no se puede recuperar encima.');
+        await refN(u.num).set({ ...u.doc, actualizado: nowISO() });
+      } else if(u.tipo === 'abono'){
+        const d = await leerNum(u.num); if(!d) return toast('Ese número ya no está vendido');
+        const abonos = Array.isArray(d.abonos) ? d.abonos : [];
+        if(!abonos.some(a => a.id === u.abono.id)) abonos.push(u.abono);
+        abonos.sort((a,b) => String(a.fecha||'').localeCompare(String(b.fecha||'')));
+        await refN(u.num).set({ ...d, abonos, abonosBorrados:(d.abonosBorrados||[]).filter(x => x !== u.abono.id), actualizado: nowISO() });
+      } else if(u.tipo === 'datos'){
+        const d = await leerNum(u.num); if(!d) return toast('Ese número ya no está vendido');
+        await refN(u.num).set({ ...d, ...u.antes, actualizado: nowISO() });
+      } else if(u.tipo === 'choque'){
+        const d = await leerNum(u.num); if(!d) return toast('Ese número ya no está vendido');
+        const clave = RifasFusion.claveVenta(u.venta);
+        await refN(u.num).set({ ...d, choques:[...(d.choques||[]), u.venta], choquesResueltos:(d.choquesResueltos||[]).filter(k => k !== clave), actualizado: nowISO() });
+      } else if(u.tipo === 'costo'){
+        const rr = (await S.db.doc(`rifas/${h.rifaId}`).get()).data();
+        const costos = (rr.costos||[]).filter(c => c.id !== u.costo.id).concat([u.costo]);
+        await S.db.doc(`rifas/${h.rifaId}`).update({ costos, costosBorrados:(rr.costosBorrados||[]).filter(x => x !== u.costo.id) });
+      } else if(u.tipo === 'ganador'){
+        const rs = await S.db.doc(`rifas/${h.rifaId}`).get(); const rr = rs.data();
+        const premios = (rr.premios||[]).map(p => p.id === u.premioId ? { ...p, ganador:u.ganador } : p);
+        await S.db.doc(`rifas/${h.rifaId}`).update({ premios, estado: premios.every(p => p.ganador) ? 'finalizada' : 'activa' });
+      } else return toast('Esto no se puede deshacer');
+    }
+    await ref.update({ deshecho:true, deshechoFecha: nowISO() });
+    await registrar('deshacer', { id:h.rifaId, nombre:h.rifaNombre }, h.num, 'Deshecho: ' + h.texto, null);
+    toast('Listo, se deshizo');
+  }catch(e){ toast(errorTxt(e)); }
+}
+
+const ICONO_HIST = { asignar:'🎟️', abono:'💵', 'borrar-abono':'🗑️', liberar:'↩️', datos:'✏️', rifa:'🗂️', 'crear-rifa':'🆕', 'editar-rifa':'⚙️', 'eliminar-rifa':'🗑️', ganador:'🏆', 'borrar-ganador':'🗑️', choque:'⚠️', costo:'🧾', 'borrar-costo':'🗑️', tasas:'💱', respaldo:'💾', deshacer:'⏪' };
+async function ventanaHistorial(rifaId){
+  const sh = modal(`<h2>Historial${rifaId && rifa() ? ' · ' + esc(rifa().nombre) : ''}</h2><p class="muted">Cambios de los últimos ${DIAS_HISTORIAL} días en este y en los equipos sincronizados. Si algo se borró por error, toca "Deshacer".</p><div id="hLista" class="muted">Cargando…</div><div class="acts"><button class="btn" data-x>Cerrar</button></div>`);
+  sh.classList.add('ancho');
+  const pintar = async () => {
+    const q = await S.db.collection('historial').get();
+    let l = q.docs.map(d => ({ id:d.id, ...d.data() })).filter(h => !rifaId || h.rifaId === rifaId).sort((a,b) => String(b.fecha).localeCompare(String(a.fecha)));
+    const cont = sh.querySelector('#hLista'); if(!cont) return;
+    if(!l.length){ cont.textContent = 'Todavía no hay cambios anotados.'; return; }
+    const total = l.length; l = l.slice(0, 300);
+    cont.className = '';
+    cont.innerHTML = `<table class="det hist">${l.map(h => `<tr class="${h.deshecho?'deshecho':''}"><td>${esc(fmtFechaHora(h.fecha))}<br><small class="muted">${esc(h.equipo||'')}${!rifaId && h.rifaNombre?' · '+esc(h.rifaNombre):''}</small></td>
+      <td>${ICONO_HIST[h.tipo]||'•'} ${esc(h.texto)}${h.deshecho?' <small class="muted">(deshecho)</small>':''}
+      ${h.deshacer && !h.deshecho ? `<button class="btn sm" data-deshacer="${esc(h.id)}" style="float:right">Deshacer</button>` : ''}</td></tr>`).join('')}</table>
+      ${total > l.length ? `<p class="muted" style="font-size:13px">Se muestran los últimos ${l.length} de ${total}.</p>` : ''}`;
+    cont.querySelectorAll('[data-deshacer]').forEach(b => b.onclick = async () => {
+      if(!await confirmar('¿Deshacer este cambio?', 'Deshacer')) return ventanaHistorial(rifaId);
+      await deshacer(b.dataset.deshacer); ventanaHistorial(rifaId);
+    });
+  };
+  try{ await pintar(); }catch(e){ sh.querySelector('#hLista').textContent = 'No se pudo leer el historial.'; }
+}
+
 // ---------- render ----------
 function render(){
   renderTop();
@@ -199,16 +247,18 @@ function render(){
   if(!S.dbListo && !S.iniciado){ app.innerHTML = h + '<p class="muted">Cargando…</p>'; return; }
   if(!S.dbListo){ app.innerHTML = h + `<div class="card empty"><h3>No se pudo abrir la base de datos</h3><p class="muted">Cierra la app y vuelve a abrirla.</p></div>`; $('#multibar').innerHTML=''; return; }
   if(!S.rifasCargadas){ app.innerHTML = h + '<p class="muted">Cargando rifas…</p>'; return; }
-  h += S.rifaId ? vistaRifa() : vistaLista();
+  h += S.rifaId ? vistaRifa() : (S.vista === 'clientes' ? vistaClientes() : avisoActualizacion() + avisoRespaldo() + vistaLista());
   app.innerHTML = h;
   renderMultibar();
 }
 function renderTop(){
   const t = $('#top'); const r = rifa();
-  if(!S.rifaId || !r){
-    t.innerHTML = `<h1>🎟️ Rifas</h1>${S.dbListo?`${botonSync()}<button class="btn" id="bTasas" title="Tasas">💱<span class="lbl"> Tasas</span></button>${S.respaldo?'<button class="btn" id="bRespaldo" title="Respaldo">💾<span class="lbl"> Respaldo</span></button>':''}<button class="btn pri" id="bNueva" title="Nueva rifa">+<span class="lbl"> Nueva</span></button>`:''}`;
+  if(!S.rifaId && S.vista === 'clientes'){
+    t.innerHTML = `<button class="btn icon" id="bAtras" aria-label="Volver">←</button><h1>👥 Clientes</h1>`;
+  } else if(!S.rifaId || !r){
+    t.innerHTML = `<h1>🎟️ Rifas</h1>${S.dbListo?`${botonSync()}<button class="btn" id="bTasas" title="Tasas">💱<span class="lbl"> Tasas</span></button><button class="btn" id="bClientes" title="Clientes">👥<span class="lbl"> Clientes</span></button><button class="btn" id="bHist" title="Historial">🕘<span class="lbl"> Historial</span></button>${S.respaldo?'<button class="btn" id="bRespaldo" title="Respaldo">💾<span class="lbl"> Respaldo</span></button>':''}<button class="btn pri" id="bNueva" title="Nueva rifa">+<span class="lbl"> Nueva</span></button>`:''}`;
   } else {
-    t.innerHTML = `<button class="btn icon" id="bAtras" aria-label="Volver">←</button><h1>${esc(r.nombre)}</h1><button class="btn" id="bImagen" title="Imagen para estados">🖼️<span class="lbl"> Imagen</span></button><button class="btn" id="bTasas" title="Tasas">💱<span class="lbl"> Tasas</span></button><button class="btn icon" id="bEditar" aria-label="Editar rifa">⚙️</button>`;
+    t.innerHTML = `<button class="btn icon" id="bAtras" aria-label="Volver">←</button><h1>${esc(r.nombre)}</h1><button class="btn" id="bImagen" title="Imagen para estados">🖼️<span class="lbl"> Imagen</span></button><button class="btn" id="bTasas" title="Tasas">💱<span class="lbl"> Tasas</span></button><button class="btn icon" id="bHist" title="Historial" aria-label="Historial">🕘</button><button class="btn icon" id="bEditar" aria-label="Editar rifa">⚙️</button>`;
   }
 }
 function lineaPremios(r){
@@ -226,6 +276,7 @@ function vistaLista(){
       <div class="muted" style="font-size:13px;margin-top:4px">${prox?`Próximo: ${esc(prox.nombre)}${prox.fecha?' · '+esc(fmtFecha(prox.fecha)):''}`:'Todos los premios sorteados'}</div>
       <div class="bar"><i style="width:${pctP}%;background:var(--pag)"></i><i style="width:${pctA}%;background:var(--apar)"></i></div>
       <div class="row" style="font-size:13px">${s?`<span class="grow">${s.pag+s.apa}/${s.total} vendidos</span><span>Cobrado <b>${money(s.cobrado,r)}</b></span>`:'<span class="muted">calculando…</span>'}</div>
+      ${s && r.costos.length ? (g => `<div class="muted" style="font-size:13px;text-align:right">Ganancia <b style="color:${g.actual>=0?'var(--pag)':'var(--danger)'}">${money(g.actual,r)}</b></div>`)(ganancia(r,s)) : ''}
     </div>`;
   }).join('') + `</div>`;
 }
@@ -247,7 +298,10 @@ function tabNumeros(r){
   const fil = [['todos','Todos ('+s.total+')'],['libres','Libres ('+s.libres+')'],['apartados','Deben ('+s.apa+')'],['pagados','Pagados ('+s.pag+')']];
   const prox = proximoPremio(r);
   if(prox && prox.requisito < 100) fil.push(['juegan', `Juegan ${esc(prox.nombre)} (${lista.filter(d=>juega(prox,d)).length})`]);
-  let h = `<div class="row"><div class="chips grow">${fil.map(([k,v])=>`<button class="chip ${S.filtro===k?'on':''}" data-fil="${k}">${v}</button>`).join('')}</div>
+  const nChoques = lista.filter(tieneChoque).length;
+  if(nChoques) fil.unshift(['choques', `⚠️ Vendidos dos veces (${nChoques})`]);
+  let h = nChoques ? `<div class="banner alerta">⚠️ ${nChoques===1?'Un número se vendió':nChoques+' números se vendieron'} a dos personas distintas en equipos diferentes (mientras no había conexión). Toca cada número marcado en rojo para decidir a quién se queda.</div>` : '';
+  h += `<div class="row"><div class="chips grow">${fil.map(([k,v])=>`<button class="chip ${S.filtro===k?'on':''}" data-fil="${k}">${v}</button>`).join('')}</div>
     <button class="btn sm ${S.multi?'pri':''}" id="bMulti">${S.multi?'✓ Selección múltiple':'Seleccionar varios'}</button></div>
     <div style="margin-top:10px"><input type="search" id="qNum" placeholder="Buscar número o nombre…" value="${esc(S.q)}"></div>`;
   const q = S.q.trim().toLowerCase();
@@ -259,10 +313,11 @@ function tabNumeros(r){
     if(S.filtro==='apartados' && est!=='apartado') continue;
     if(S.filtro==='pagados' && est!=='pagado') continue;
     if(S.filtro==='juegan' && !(prox && juega(prox, d))) continue;
+    if(S.filtro==='choques' && !tieneChoque(d)) continue;
     const txt = fmtNum(r,n);
     if(q && !(txt.includes(q) || (d && (String(d.nombre).toLowerCase().includes(q) || String(d.telefono||'').includes(q))))) continue;
-    const cls = ['n', d?est:'', S.sel.has(n)?'sel':'', ganadores.has(n)?'gan':''].join(' ');
-    const tit = d ? `${d.nombre} · ${pctTxt(d.pct)}` : 'Libre';
+    const cls = ['n', d?est:'', S.sel.has(n)?'sel':'', ganadores.has(n)?'gan':'', tieneChoque(d)?'choque':''].join(' ');
+    const tit = d ? `${d.nombre} · ${pctTxt(d.pct)}${tieneChoque(d)?' · ¡vendido dos veces!':''}` : 'Libre';
     const barra = d && d.estado==='apartado' ? `<i class="pb" style="width:${d.pct}%"></i>` : '';
     celdas.push(`<button class="${cls}" data-n="${n}" title="${esc(tit)}">${txt}${barra}</button>`);
   }
@@ -271,23 +326,13 @@ function tabNumeros(r){
   return h;
 }
 
-function compradores(r){
-  const map = new Map();
-  for(const d of numerosVendidos()){
-    const key = telWa(d.telefono) || String(d.nombre).trim().toLowerCase();
-    if(!map.has(key)) map.set(key, { nombre:d.nombre, telefono:d.telefono, nums:[] });
-    map.get(key).nums.push(d);
-  }
-  return [...map.values()].map(c => {
-    const pagado = c.nums.reduce((s,d)=>s+Math.min(d.abonado, r.precio),0);
-    return { ...c, total: c.nums.length*r.precio, pagado, debe: c.nums.length*r.precio - pagado };
-  }).sort((a,b)=> b.debe - a.debe || String(a.nombre).localeCompare(String(b.nombre)));
-}
+function compradores(r){ return agruparCompradores(r, numerosVendidos()); }
 function tabCompradores(r){
   const q = S.qComp.trim().toLowerCase();
   const lista = compradores(r).filter(c => !q || String(c.nombre).toLowerCase().includes(q) || String(c.telefono||'').includes(q));
   S._compVista = lista;
-  let h = `<input type="search" id="qComp" placeholder="Buscar comprador…" value="${esc(S.qComp)}">`;
+  const deudores = compradores(r).filter(c => c.debe > EPS);
+  let h = `<div class="row"><input type="search" id="qComp" class="grow" style="flex:1;min-width:180px" placeholder="Buscar comprador…" value="${esc(S.qComp)}">${deudores.length?`<button class="btn pri" id="bCobrar">📣 Cobrar a todos (${deudores.length})</button>`:''}</div>`;
   if(!lista.length) return h + `<p class="muted" style="margin-top:16px">${S.raw.size?'Nadie coincide con la búsqueda.':'Todavía no has vendido números.'}</p>`;
   h += `<div class="comp" style="margin-top:12px">` + lista.map((c,i) => {
     const wa = telWa(c.telefono);
@@ -297,7 +342,7 @@ function tabCompradores(r){
       <div class="nums">${c.nums.map(d=>`<b class="${d.estado}" title="${pctTxt(d.pct)}">${fmtNum(r,d.num)}${d.estado==='apartado'?' · '+Math.floor(d.pct)+'%':''}</b>`).join('')}</div>
       <div class="row">${c.debe>EPS?`<button class="btn sm ok" data-abonarcomp="${i}">Registrar abono</button>`:''}
       ${wa?`<a class="btn sm" href="https://wa.me/${wa}?text=${encodeURIComponent(msgComprador(r,c))}" target="_blank" rel="noopener">WhatsApp</a>`:''}
-      <button class="btn sm" data-copiarmsg="${i}">Copiar mensaje</button></div>
+      <button class="btn sm" data-copiarmsg="${i}">Copiar mensaje</button><button class="btn sm" data-compro="${i}">🧾 Comprobante</button></div>
     </div>`;
   }).join('') + `</div>`;
   return h;
@@ -368,6 +413,7 @@ function tabResumen(r){
   if(ms.length) h += `<div class="card" style="margin-top:12px"><b>Dinero recibido por moneda</b><table class="det" style="margin-top:6px">${ms.map(([k,v])=>`<tr><td>${esc(k)}</td><td>${fmtM(v,k)}</td></tr>`).join('')}</table></div>`;
   const me = Object.entries(porMetodo);
   if(me.length) h += `<div class="card" style="margin-top:12px"><b>Por método de pago (en ${esc(r.moneda)})</b><table class="det" style="margin-top:6px">${me.map(([k,v])=>`<tr><td>${esc(k)}</td><td>${money(v,r)}</td></tr>`).join('')}</table></div>`;
+  h += tarjetaCostos(r, s);
   h += `<div class="card" style="margin-top:12px"><b>Participantes por premio</b><table class="det" style="margin-top:6px">${premiosOrden(r).map(p=>`<tr><td>${esc(p.nombre)}${p.fecha?' · '+esc(fmtFecha(p.fecha)):''}</td><td>${lista.filter(d=>juega(p,d)).length} número(s) con ${p.requisito}% o más</td></tr>`).join('')}</table></div>`;
   h += `<div class="card" style="margin-top:12px"><b>Compartir y exportar</b>
     <div class="row" style="margin-top:10px">
@@ -377,6 +423,50 @@ function tabResumen(r){
       <button class="btn" id="bCSV">Exportar a Excel (CSV)</button>
     </div></div>`;
   return h;
+}
+function tarjetaCostos(r, s){
+  const g = ganancia(r, s);
+  const filas = (r.costos||[]).map(c => `<tr><td>${esc(c.concepto)}<br><small class="muted">${esc(fmtFecha(String(c.fecha||'').slice(0,10)))}</small></td>
+    <td>${fmtM(c.monto,c.moneda)}${c.moneda!==r.moneda?`<br><small class="muted">≈ ${money(c.equiv,r)}</small>`:''}
+    <button class="btn sm danger" data-quitarcosto="${esc(c.id)}" title="Borrar" style="float:right">✕</button></td></tr>`).join('');
+  const cubierto = g.costos > 0 ? Math.min(100, s.cobrado / g.costos * 100) : 0;
+  return `<div class="card" style="margin-top:12px"><b>Costos y ganancia</b>
+    <p class="muted" style="font-size:13px;margin:4px 0 8px">Anota lo que costaron los premios y otros gastos (publicidad, envíos…) para ver la ganancia real.</p>
+    ${filas ? `<table class="det">${filas}</table>` : ''}
+    <div class="row costo-form" style="margin-top:10px">
+      <input type="text" id="cConcepto" placeholder="Concepto (ej: Moto, Publicidad)" style="flex:2;min-width:160px">
+      <input type="number" id="cMonto" placeholder="Monto" min="0" step="any" style="flex:1;min-width:90px">
+      <select id="cMoneda" style="width:auto">${MONEDAS.map(m=>`<option ${m===r.moneda?'selected':''}>${m}</option>`).join('')}</select>
+      <input type="number" id="cTasa" placeholder="Tasa 1 ${esc(r.moneda)} = …" min="0" step="any" style="flex:1;min-width:110px" hidden>
+      <button class="btn pri" id="bAddCosto">+ Agregar</button>
+    </div>
+    ${g.costos > 0 ? `<div class="stats" style="margin-top:12px">
+      <div class="stat"><small>Costos</small><b>${money(g.costos,r)}</b></div>
+      <div class="stat"><small>Ganancia hasta ahora</small><b style="color:${g.actual>=0?'var(--pag)':'var(--danger)'}">${money(g.actual,r)}</b><small>cobrado − costos</small></div>
+      <div class="stat"><small>Ganancia si se vende todo</small><b>${money(g.potencial,r)}</b></div>
+      <div class="stat"><small>Para cubrir costos</small><b>${g.equilibrio}</b><small>números pagados (${Math.floor(cubierto)}% cubierto)</small></div>
+    </div>` : ''}</div>`;
+}
+async function agregarCosto(r){
+  const concepto = $('#cConcepto').value.trim(); const monto = Number($('#cMonto').value)||0; const moneda = $('#cMoneda').value;
+  const tasa = moneda === r.moneda ? 1 : Number($('#cTasa').value);
+  if(!concepto) return toast('Escribe el concepto');
+  if(!(monto > 0)) return toast('Escribe el monto');
+  if(!(tasa > 0)) return toast('Falta la tasa para ' + moneda);
+  const c = { id:uid(), concepto, monto, moneda, tasa, equiv: monto / tasa, fecha: nowISO() };
+  try{
+    await S.db.doc(`rifas/${r.id}`).update({ costos:[...(r.costos||[]), c] });
+    await registrar('costo', r, null, `Costo agregado: ${concepto} ${fmtM(monto,moneda)}`, null);
+    toast('Costo agregado');
+  }catch(e){ toast(errorTxt(e)); }
+}
+async function quitarCosto(r, id){
+  const c = (r.costos||[]).find(x => x.id === id); if(!c) return;
+  if(!await confirmar(`¿Borrar el costo "${c.concepto}"?`, 'Borrar', true)) return;
+  try{
+    await S.db.doc(`rifas/${r.id}`).update({ costos:(r.costos||[]).filter(x => x.id !== id), costosBorrados:[...new Set([...(r.costosBorrados||[]), id])] });
+    await registrar('borrar-costo', r, null, `Costo borrado: ${c.concepto} ${fmtM(c.monto,c.moneda)}`, { tipo:'costo', costo:c });
+  }catch(e){ toast(errorTxt(e)); }
 }
 function textoLibres(r){
   const libres = rango(r).filter(n => !S.raw.has(n)).map(n => fmtNum(r,n));
@@ -394,6 +484,9 @@ function renderMultibar(){
 }
 
 // ---------- formulario de rifa ----------
+// El último responsable usado se propone en las rifas nuevas.
+function ultimoResponsable(){ try{ return localStorage.getItem('ultimoResponsable') || ''; }catch(e){ return ''; } }
+function recordarResponsable(v){ try{ if(v) localStorage.setItem('ultimoResponsable', v); }catch(e){} }
 function filaPremio(p){
   return `<div class="premio-ed" data-pid="${esc(p.id)}">
     <div class="row"><input type="text" class="grow" data-k="nombre" placeholder="Nombre del premio" value="${esc(p.nombre)}" required style="flex:1;min-width:0">
@@ -421,11 +514,13 @@ function formRifa(r){
     </div>
     <div class="row" style="margin:6px 0 8px"><b class="grow">Premios</b><button type="button" class="btn sm" id="bAddPremio">+ Premio especial</button></div>
     <div id="premiosEd">${premiosOrden(normRifa(e)).map(filaPremio).join('')}</div>
+    <label class="f"><span>Responsable (quién organiza)</span><textarea name="responsable" rows="1" class="crece" placeholder="Nombre y, si quieres, cédula o teléfono (Enter para otra línea)">${esc(r ? (r.responsable||'') : ultimoResponsable())}</textarea></label>
     <label class="f"><span>Notas</span><textarea name="notas">${esc(e.notas||'')}</textarea></label>
     <div id="errRifa" class="debe"></div>
     <div class="acts">${r?'<button type="button" class="btn danger" id="bBorrarRifa" style="margin-right:auto">Eliminar</button>':''}<button type="button" class="btn" data-x>Cancelar</button><button class="btn pri">Guardar</button></div>
   </form>`);
   const cont = sh.querySelector('#premiosEd');
+  activarCrecer(sh);
   sh.querySelector('#bAddPremio').onclick = () => {
     const n = cont.querySelectorAll('.premio-ed').length;
     cont.insertAdjacentHTML('afterbegin', filaPremio({ id:uid(), nombre:`Premio especial ${n}`, requisito:50, fecha:'', loteria:'' }));
@@ -447,9 +542,10 @@ function formRifa(r){
     const datos = {
       nombre: f.get('nombre').trim(), precio: Number(f.get('precio'))||0, moneda: f.get('moneda'),
       cantidad: Math.min(1000, Math.max(2, parseInt(f.get('cantidad'))||100)), inicio: Number(f.get('inicio')),
-      notas: f.get('notas').trim(), premios
+      notas: f.get('notas').trim(), responsable: (f.get('responsable')||'').trim(), premios
     };
     datos.estado = premios.every(p => p.ganador) ? 'finalizada' : 'activa';
+    if(datos.responsable) recordarResponsable(datos.responsable);
     if(r){
       const fuera = numerosVendidos().filter(d => d.num < datos.inicio || d.num > datos.inicio + datos.cantidad - 1);
       if(fuera.length){ sh.querySelector('#errRifa').textContent = `No se puede: los números ${fuera.slice(0,8).map(d=>d.num).join(', ')} ya están vendidos y quedarían fuera del rango.`; return; }
@@ -459,19 +555,28 @@ function formRifa(r){
       if(r){
         const { id, ...resto } = r;
         await S.db.doc(`rifas/${r.id}`).set({ ...resto, ...datos, premio:null, fecha:null, loteria:null, ganador:null });
+        await registrar('editar-rifa', { id:r.id, nombre:datos.nombre }, null, `Rifa "${datos.nombre}" editada`, null);
         cerrarModal(); toast('Rifa actualizada');
       } else {
         const ref = S.db.collection('rifas').doc();
         await ref.set({ ...datos, creada:nowISO() });
-        cerrarModal(); toast('Rifa creada'); abrirRifa(ref.id);
+        await registrar('crear-rifa', { id:ref.id, nombre:datos.nombre }, null, `Rifa "${datos.nombre}" creada`, null);
+        cerrarModal(); abrirRifa(ref.id);
+        setTimeout(() => {
+          const sh2 = modal(`<h2>✅ Rifa creada</h2><p class="muted">¿Quieres crear de una vez el flyer de lanzamiento para anunciarla en WhatsApp e Instagram?</p>
+            <div class="acts"><button class="btn" data-x>Ahora no</button><button class="btn pri" id="oFlyer">🖼️ Crear el flyer</button></div>`);
+          sh2.querySelector('#oFlyer').onclick = () => { const rr = rifa(); if(rr) ventanaImagen(rr, { plantilla:'lanzamiento' }); };
+        }, 150);
       }
     }catch(e){ btn.disabled=false; sh.querySelector('#errRifa').textContent = errorTxt(e); }
   };
   const bb = sh.querySelector('#bBorrarRifa');
   if(bb) bb.onclick = async () => {
-    if(!await confirmar(`¿Eliminar la rifa "${r.nombre}" y todos sus números? No se puede deshacer.`, 'Eliminar', true)) return;
+    if(!await confirmar(`¿Eliminar la rifa "${r.nombre}" y todos sus números? Se puede recuperar desde el Historial.`, 'Eliminar', true)) return;
     try{
       const q = await S.db.collection(`rifas/${r.id}/numeros`).limit(1000).get();
+      const rs = await S.db.doc(`rifas/${r.id}`).get();
+      await registrar('eliminar-rifa', r, null, `Eliminada la rifa "${r.nombre}" con ${q.docs.filter(d=>d.data()&&d.data().nombre).length} número(s) vendidos`, { tipo:'rifa', rifa: rs.data(), numeros: q.docs.map(d => d.data()).filter(Boolean) });
       for(const d of q.docs) await S.db.doc(`rifas/${r.id}/numeros/${d.id}`).delete();
       await S.db.doc(`rifas/${r.id}`).delete();
       toast('Rifa eliminada'); salirRifa();
@@ -490,7 +595,7 @@ function ventanaTasas(){
     ev.preventDefault();
     const f = new FormData(ev.target); const tasas = { '$':1 };
     for(const m of MONEDAS) if(m!=='$'){ const v = Number(f.get(m)); if(v>0) tasas[m]=v; }
-    try{ await S.db.doc('config/tasas').set({ tasas, actualizado: nowISO() }); cerrarModal(); toast('Tasas guardadas'); }
+    try{ await S.db.doc('config/tasas').set({ tasas, actualizado: nowISO() }); await registrar('tasas', null, null, 'Tasas: ' + Object.entries(tasas).filter(([k])=>k!=='$').map(([k,v])=>`1 $ = ${v} ${k}`).join(', '), null); cerrarModal(); toast('Tasas guardadas'); }
     catch(e){ toast(errorTxt(e)); }
   };
 }
@@ -542,25 +647,14 @@ function leerAbono(cont, r){
   if(!(tasa > 0)) return { error:'Falta la tasa de cambio para ' + moneda };
   return { id:uid(), monto, moneda, tasa, equiv: monto / tasa, metodo:q('metodo').value, referencia:q('referencia').value.trim(), fecha:nowISO() };
 }
-// Reparte un abono entre varios números, llenando primero los que tienen más abonado.
-function repartir(r, numsInfo, abono){
-  let resto = abono.equiv; const res = [];
-  const orden = [...numsInfo].sort((a,b) => b.pct - a.pct || a.num - b.num);
-  for(const d of orden){
-    if(resto <= EPS) break;
-    const falta = Math.max(0, r.precio - d.abonado); if(falta <= EPS) continue;
-    const eq = Math.min(falta, resto); resto -= eq;
-    const parte = eq / abono.equiv;
-    res.push({ d, abono: { ...abono, id:uid(), equiv:eq, monto: abono.monto * parte } });
-  }
-  return { partes:res, sobra: resto > EPS ? resto : 0 };
-}
 
 // ---------- asignar / editar número ----------
 function formNumero(nums, actual){
   const r = rifa();
   const e = actual || { nombre:'', telefono:'', nota:'' };
-  const comps = compradores(r);
+  // Sugerencias: compradores de esta rifa y clientes de rifas anteriores.
+  const vistos = new Set();
+  const comps = [...compradores(r), ...clientesParaSugerir()].filter(c => { const k = String(c.nombre).trim().toLowerCase(); if(vistos.has(k)) return false; vistos.add(k); return true; });
   const sh = modal(`<h2>${actual?'Editar datos del '+fmtNum(r,actual.num):'Asignar '+(nums.length>1?nums.length+' números':'número '+fmtNum(r,nums[0]))}</h2>
   ${nums.length>1?`<div class="nums">${nums.map(n=>`<b>${fmtNum(r,n)}</b>`).join('')}</div>`:''}
   <form id="fNum">
@@ -586,7 +680,13 @@ function formNumero(nums, actual){
     const btn = form.querySelector('button.pri');
     if(actual){
       btn.disabled = true;
-      try{ await guardarNum({ ...num(actual.num), ...datos }); cerrarModal(); toast('Guardado'); }
+      try{
+        const prev = num(actual.num);
+        await guardarNum({ ...prev, ...datos });
+        if(prev.nombre !== datos.nombre || (prev.telefono||'') !== datos.telefono || (prev.nota||'') !== datos.nota)
+          await registrar('datos', r, actual.num, `${fmtNum(r,actual.num)}: datos cambiados de ${prev.nombre} a ${datos.nombre}${datos.telefono?' ('+datos.telefono+')':''}`, { tipo:'datos', num:actual.num, antes:{ nombre:prev.nombre, telefono:prev.telefono||'', nota:prev.nota||'' } });
+        cerrarModal(); toast('Guardado');
+      }
       catch(e){ btn.disabled=false; err(errorTxt(e)); }
       return;
     }
@@ -595,10 +695,12 @@ function formNumero(nums, actual){
     btn.disabled = true;
     const res = await asignar(r, nums, datos, ab);
     if(res.error){ btn.disabled=false; return err(res.error); }
+    const asignados = nums.filter(n => !res.ocupados.includes(n));
+    if(asignados.length) await registrar('asignar', r, asignados.length===1?asignados[0]:null, `${asignados.length===1?'Número '+fmtNum(r,asignados[0]):'Números '+asignados.map(n=>fmtNum(r,n)).join(', ')} a ${datos.nombre}${ab?' · abono '+fmtM(ab.monto,ab.moneda)+(ab.metodo?' '+ab.metodo:''):''}`, null);
     cerrarModal(); S.multi=false; S.sel.clear(); render();
     let msg = res.ocupados.length ? `Guardado. Ya estaban ocupados: ${res.ocupados.map(n=>fmtNum(r,n)).join(', ')}` : (nums.length>1 ? `${nums.length} números asignados` : 'Número asignado');
     if(res.sobra) msg += `. Sobró ${money(res.sobra,r)} del abono (no se registró).`;
-    toast(msg);
+    if(ab && asignados.length) setTimeout(() => ofrecerComprobante(r, asignados[0], msg), 80); else toast(msg);
   };
 }
 async function asignar(r, nums, datos, abono){
@@ -637,7 +739,20 @@ function detalleNumero(n){
   const abonos = d.abonos.length ? d.abonos.map(a => `<tr><td>${esc(fmtFechaHora(a.fecha))}<br><small class="muted">${esc(a.metodo||'')}${a.referencia?' · Ref '+esc(a.referencia):''}</small></td>
       <td>${fmtM(a.monto,a.moneda)}${a.moneda!==r.moneda?`<br><small class="muted">≈ ${money(a.equiv,r)} (tasa ${+Number(a.tasa).toFixed(4)})</small>`:''}
       <button class="btn sm danger" data-quitarabono="${esc(a.id)}" title="Borrar abono" style="float:right">✕</button></td></tr>`).join('') : `<tr><td colspan="2" class="muted">Sin abonos todavía</td></tr>`;
+  const choques = tieneChoque(d) ? d.choques.map((c,i) => {
+    const ab = (c.abonos||[]).reduce((s,a)=>s+(Number(a.equiv)||0),0);
+    return `<div class="card alerta" style="margin-bottom:10px">
+      <b>⚠️ Este número también se vendió a ${esc(c.nombre)}</b>
+      <div class="muted" style="font-size:13px">${esc(c.telefono||'Sin teléfono')}${c.nota?' · '+esc(c.nota):''} · abonado ${money(Math.min(ab,r.precio),r)} en ${(c.abonos||[]).length} abono(s)${c.actualizado?' · '+esc(fmtFechaHora(c.actualizado)):''}</div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn sm" data-chq="${i}" data-acc="mantener">Se queda ${esc(d.nombre)}</button>
+        <button class="btn sm" data-chq="${i}" data-acc="cambiar">Se queda ${esc(c.nombre)}</button>
+      </div>
+      <div class="row" style="margin-top:6px"><input type="text" inputmode="numeric" data-chqdest="${i}" placeholder="Otro número libre" style="max-width:150px">
+        <button class="btn sm pri" data-chq="${i}" data-acc="mover">Pasar a ${esc(c.nombre)} a ese número</button></div>
+    </div>`; }).join('') : '';
   const sh = modal(`<h2>Número ${fmtNum(r,n)} · ${esc(d.nombre)}</h2>
+    ${choques}
     <div class="muted">${esc(d.telefono||'Sin teléfono')}${d.nota?' · '+esc(d.nota):''}</div>
     <div class="bar" style="height:10px"><i style="width:${d.pct}%;background:${d.estado==='pagado'?'var(--pag)':'var(--apar)'}"></i></div>
     <div class="row"><b class="grow">${d.estado==='pagado'?'Pagado completo':'Abonado '+pctTxt(d.pct)}</b><span>${money(Math.min(d.abonado,r.precio),r)} de ${money(r.precio,r)}</span></div>
@@ -647,6 +762,7 @@ function detalleNumero(n){
     ${c && c.nums.length>1?`<p class="muted" style="font-size:13px">Sus números: ${c.nums.map(x=>fmtNum(r,x.num)).join(', ')}</p>`:''}
     <div class="acts" style="justify-content:flex-start">
       ${d.debe>EPS?'<button class="btn ok" id="dAbonar">+ Registrar abono</button>':''}
+      <button class="btn" id="dComp">🧾 Comprobante</button>
       <button class="btn" id="dEditar">Editar datos</button>
       ${wa && c?`<a class="btn" href="https://wa.me/${wa}?text=${encodeURIComponent(msgComprador(r,c))}" target="_blank" rel="noopener">WhatsApp</a>`:''}
       <button class="btn danger" id="dLiberar">Liberar número</button>
@@ -654,15 +770,65 @@ function detalleNumero(n){
   const ba = sh.querySelector('#dAbonar');
   if(ba) ba.onclick = () => formAbono(r, [d], `Abono al ${fmtNum(r,n)} (debe ${money(d.debe,r)})`);
   sh.querySelector('#dEditar').onclick = () => formNumero([n], d);
+  sh.querySelector('#dComp').onclick = () => ventanaComprobante(r, claveComp(d));
+  sh.querySelectorAll('[data-chq]').forEach(b => b.onclick = () => {
+    const i = Number(b.dataset.chq);
+    const dest = (sh.querySelector(`[data-chqdest="${i}"]`)||{}).value;
+    resolverChoque(r, n, i, b.dataset.acc, dest);
+  });
   sh.querySelectorAll('[data-quitarabono]').forEach(b => b.onclick = async () => {
     if(!await confirmar('¿Borrar este abono?', 'Borrar', true)) return;
     const act = num(n);
-    try{ await guardarNum({ ...act, abonos: act.abonos.filter(a => a.id !== b.dataset.quitarabono) }); toast('Abono borrado'); }catch(e){ toast(errorTxt(e)); }
+    const id = b.dataset.quitarabono;
+    // El id del abono borrado se anota para que, al sincronizar, no vuelva desde el otro equipo.
+    const borrados = [...new Set([...(act.abonosBorrados||[]), id])];
+    const ab = act.abonos.find(a => a.id === id);
+    try{
+      await guardarNum({ ...act, abonos: act.abonos.filter(a => a.id !== id), abonosBorrados: borrados });
+      if(ab) await registrar('borrar-abono', r, n, `Borrado abono de ${fmtM(ab.monto,ab.moneda)} del ${fmtNum(r,n)} (${act.nombre})`, { tipo:'abono', num:n, abono:ab });
+      toast('Abono borrado');
+    }catch(e){ toast(errorTxt(e)); }
   });
   sh.querySelector('#dLiberar').onclick = async () => {
-    if(!await confirmar(`¿Liberar el número ${fmtNum(r,n)} de ${d.nombre}? Se borran sus abonos y queda disponible otra vez.`, 'Liberar', true)) return;
-    try{ await refNum(n).delete(); toast('Número liberado'); }catch(e){ toast(errorTxt(e)); }
+    if(!await confirmar(`¿Liberar el número ${fmtNum(r,n)} de ${d.nombre}? Se borran sus abonos y queda disponible otra vez (se puede deshacer desde el Historial).`, 'Liberar', true)) return;
+    const copia = S.raw.get(n);
+    try{
+      await refNum(n).delete();
+      await registrar('liberar', r, n, `Liberado el ${fmtNum(r,n)} de ${d.nombre} (tenía ${money(Math.min(d.abonado,r.precio),r)} abonado)`, copia ? { tipo:'liberar', num:n, doc:copia } : null);
+      cerrarModal(); toast('Número liberado. Si fue un error, usa Historial → Deshacer.');
+    }catch(e){ toast(errorTxt(e)); }
   };
+}
+// Número vendido dos veces: decidir a quién se queda.
+// mantener: sigue el comprador actual; cambiar: pasa a ser del otro; mover: el otro se va a un número libre.
+async function resolverChoque(r, n, i, acc, destTxt){
+  const act = num(n); if(!act || !tieneChoque(act)) return cerrarModal();
+  const c = act.choques[i]; if(!c) return;
+  const resto = act.choques.filter((_,k) => k !== i);
+  const resueltos = [...new Set([...(act.choquesResueltos||[]), RifasFusion.claveVenta(c)])];
+  const actual = { nombre:act.nombre, telefono:act.telefono||'', nota:act.nota||'', abonos:act.abonos, actualizado:act.actualizado||'' };
+  try{
+    if(acc === 'mantener'){
+      if(!await confirmar(`¿Dejar el ${fmtNum(r,n)} a ${act.nombre}? La venta a ${c.nombre} se descarta (queda en el historial).`, 'Sí, descartar', true)) return;
+      await guardarNum({ ...act, choques:resto, choquesResueltos:resueltos });
+      await registrar('choque', r, n, `Vendido dos veces: se quedó ${act.nombre}, se descartó la venta a ${c.nombre}`, { tipo:'choque', num:n, venta:c });
+    } else if(acc === 'cambiar'){
+      if(!await confirmar(`¿Dar el ${fmtNum(r,n)} a ${c.nombre}? La venta a ${act.nombre} se descarta (queda en el historial).`, 'Sí, cambiar', true)) return;
+      const resueltos2 = [...new Set([...resueltos, RifasFusion.claveVenta(actual)])];
+      await guardarNum({ ...act, nombre:c.nombre, telefono:c.telefono, nota:c.nota, abonos:c.abonos||[], choques:resto, choquesResueltos:resueltos2 });
+      await registrar('choque', r, n, `Vendido dos veces: se quedó ${c.nombre}, se descartó la venta a ${act.nombre}`, { tipo:'choque', num:n, venta:actual });
+    } else if(acc === 'mover'){
+      const m = parseInt(destTxt, 10);
+      if(isNaN(m) || m < r.inicio || m > r.inicio + r.cantidad - 1) return toast('Escribe un número libre de esta rifa');
+      if(S.raw.has(m)) return toast(`El ${fmtNum(r,m)} no está libre`);
+      const cur = await refNum(m).get();
+      if(cur.exists && cur.data() && cur.data().nombre) return toast(`El ${fmtNum(r,m)} no está libre`);
+      await guardarNum(info(r, { num:m, nombre:c.nombre, telefono:c.telefono, nota:c.nota, abonos:c.abonos||[], fecha:nowISO() }));
+      await guardarNum({ ...act, choques:resto, choquesResueltos:resueltos });
+      await registrar('choque', r, n, `Vendido dos veces: ${c.nombre} pasó del ${fmtNum(r,n)} al ${fmtNum(r,m)}`, null);
+    } else return;
+    cerrarModal(); toast('Listo');
+  }catch(e){ toast(errorTxt(e)); }
 }
 // Registrar un abono para uno o varios números (se reparte).
 function formAbono(r, numsInfo, titulo){
@@ -684,8 +850,9 @@ function formAbono(r, numsInfo, titulo){
     form.querySelector('button.pri').disabled = true;
     try{
       for(const p of rep.partes){ const act = num(p.d.num); await guardarNum({ ...act, abonos:[...act.abonos, p.abono] }); }
-      cerrarModal();
-      toast(rep.sobra ? `Abono guardado. Sobró ${money(rep.sobra,r)} (ya estaba todo pagado).` : 'Abono guardado');
+      if(rep.partes.length) await registrar('abono', r, rep.partes.length===1?rep.partes[0].d.num:null, `Abono de ${fmtM(ab.monto,ab.moneda)}${ab.metodo?' ('+ab.metodo+(ab.referencia?' ref '+ab.referencia:'')+')':''} a ${rep.partes.map(p=>fmtNum(r,p.d.num)).join(', ')} · ${rep.partes[0].d.nombre}`, null);
+      const msg = rep.sobra ? `Abono guardado. Sobró ${money(rep.sobra,r)} (ya estaba todo pagado).` : 'Abono guardado';
+      if(rep.partes.length) setTimeout(() => ofrecerComprobante(r, rep.partes[0].d.num, msg), 80); else { cerrarModal(); toast(msg); }
     }catch(e){ form.querySelector('button.pri').disabled = false; sh.querySelector('#errAb').textContent = errorTxt(e); }
   };
 }
@@ -699,6 +866,8 @@ async function guardarGanador(r, pid, numero, metodo){
   });
   try{
     await S.db.doc(`rifas/${r.id}`).update({ premios, estado: premios.every(p => p.ganador) ? 'finalizada' : 'activa' });
+    const p = premios.find(p => p.id === pid);
+    await registrar('ganador', r, numero, `${p.nombre}: salió el ${fmtNum(r,numero)}${d?' de '+d.nombre:' (no vendido)'}${p.ganador.juega?' · gana':' · no participaba'}`, null);
     toast('Resultado guardado');
   }catch(e){ toast(errorTxt(e)); }
 }
@@ -762,17 +931,93 @@ function ventanaSync(){
 }
 
 // ---------- respaldo (solo si la plataforma lo ofrece) ----------
+function textoAuto(){
+  const u = S.respaldo && S.respaldo.auto && S.respaldo.auto.ultimo();
+  return u ? `Último respaldo automático: ${esc(fmtFechaHora(u.fecha))}` : 'Todavía no se ha hecho el primer respaldo automático (se hace unos segundos después de abrir la app).';
+}
+// Aviso de versión nueva del programa de Windows (S.actualizacion lo llena inicio-local.js).
+// ---------- actualización del programa de Windows ----------
+// Primero busca en la carpeta desde donde se instaló (Instalar-Rifas-X.Y.Z.exe más nuevo): si hay,
+// abre una ventana no obligatoria y con "Actualizar ahora" se instala sola. Si no, revisa version.json
+// en GitHub Pages y solo avisa con un enlace de descarga (para otras PCs).
+async function revisarActualizacion(manual){
+  const nat = window.rifasNativo; if(!nat || !nat.buscarActualizacion) return;
+  let a = null;
+  try{ a = await nat.buscarActualizacion(); }catch(e){ if(manual) toast('No se pudo buscar la actualización'); return; }
+  S.version = a.actual; S.actualizacion = a.hay ? a : null;
+  if(!a.hay){ if(manual) toast(`Ya tienes la última versión (${a.actual})`); render(); return; }
+  if(a.origen === 'local'){
+    if(manual || (S.actOmitida !== a.version && $('#modal').hidden)) return ventanaActualizacion();
+  } else if(manual) return ventanaActualizacion();
+  render();
+}
+function avisoActualizacion(){
+  const a = S.actualizacion; if(!a) return '';
+  if(a.origen !== 'local'){ try{ if(localStorage.getItem('actualizacionLuego') === a.version) return ''; }catch(e){} }
+  return `<div class="banner nuevo">🆕 Hay una versión nueva del programa: <b>${esc(a.version)}</b> (tienes la ${esc(a.actual)}). <button class="btn sm pri" id="bActualizar">${a.origen==='local'?'Actualizar':'Ver novedades'}</button></div>`;
+}
+function ventanaActualizacion(){
+  const a = S.actualizacion; if(!a) return;
+  const nov = a.origen === 'local'
+    ? (a.novedades ? `<div class="card novedades">${esc(a.novedades)}</div>` : '')
+    : (a.notas && a.notas.length ? `<ul>${a.notas.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : '');
+  const sh = modal(`<h2>🆕 Hay una versión nueva: ${esc(a.version)}</h2>
+    <p class="muted">Tienes la versión ${esc(a.actual)}. Tus rifas no se pierden al actualizar: los datos están aparte del programa.</p>
+    ${nov}
+    ${a.origen === 'local'
+      ? `<p class="muted" style="font-size:13px">Con "Actualizar ahora" el programa se cierra, se actualiza solo en unos segundos y se vuelve a abrir.</p>
+         <div class="acts"><button class="btn" id="aLuego">Más tarde</button><button class="btn pri" id="aAhora">Actualizar ahora</button></div>`
+      : `<ol class="muted" style="font-size:13px"><li>Toca "Descargar" y baja el archivo <b>Instalar-Rifas-${esc(a.version)}.exe</b>.</li><li>Cierra este programa y abre el instalador.</li></ol>
+         <div class="acts"><button class="btn" id="aLuego">Recordar después</button><a class="btn pri" href="${esc(a.descarga)}" target="_blank" rel="noopener">Descargar</a></div>`}`);
+  sh.querySelector('#aLuego').onclick = () => {
+    // Local: no vuelve a preguntar por esa versión hasta reiniciar el programa. Web: hasta la próxima versión.
+    if(a.origen === 'local') S.actOmitida = a.version;
+    else { try{ localStorage.setItem('actualizacionLuego', a.version); }catch(e){} }
+    cerrarModal(); render();
+  };
+  const ahora = sh.querySelector('#aAhora');
+  if(ahora) ahora.onclick = async () => {
+    ahora.disabled = true; ahora.textContent = 'Actualizando…';
+    let ok = false; try{ ok = await window.rifasNativo.instalarActualizacion(); }catch(e){}
+    if(!ok){ ahora.disabled = false; ahora.textContent = 'Actualizar ahora'; toast('No se encontró el instalador. ¿Se movió la carpeta?'); }
+  };
+}
+// En el teléfono sin sincronizar no hay respaldo automático: se recuerda guardar uno cada semana.
+function avisoRespaldo(){
+  if(!S.respaldo || S.respaldo.auto || !S.rifas.length) return '';
+  if(S.sync && S.sync.estado().cfg) return '';
+  const u = S.respaldo.ultimoManual();
+  if(u && Date.now() - new Date(u).getTime() < 7*864e5) return '';
+  return `<div class="banner">💾 ${u ? 'Hace más de una semana que no guardas un respaldo' : 'Todavía no has guardado un respaldo'} en este equipo. <button class="btn sm" id="bRespaldo2">Guardar respaldo</button></div>`;
+}
 function ventanaRespaldo(){
   const sh = modal(`<h2>Respaldo</h2>
     <p class="muted">Guarda una copia de todas tus rifas en un archivo. Con ese archivo puedes recuperarlas en esta u otra computadora.</p>
     <div class="acts" style="justify-content:flex-start"><button class="btn pri" id="rExp">Guardar respaldo</button>
     <label class="btn">Cargar respaldo<input type="file" id="rImp" accept=".json,application/json" hidden></label></div>
     <div id="rMsg" class="muted" style="margin-top:10px"></div>
+    ${S.respaldo.auto ? `<div class="card" style="margin-top:12px"><b>Respaldo automático</b>
+      <p class="muted" style="font-size:13px;margin:4px 0 8px">Esta computadora guarda sola una copia cada día (al abrir la app y cada 30 minutos si hubo cambios) en Documentos › "Rifas - respaldos". Se guardan los últimos 14 días.</p>
+      <div class="muted" style="font-size:13px" id="rAutoTxt">${textoAuto()}</div>
+      <div class="row" style="margin-top:8px"><button class="btn sm" id="rAutoYa">Hacer respaldo ahora</button><button class="btn sm" id="rAutoDir">Abrir carpeta</button></div></div>`
+      : `<p class="muted" style="font-size:13px;margin-top:10px">${S.respaldo.ultimoManual() ? 'Último respaldo guardado en este equipo: ' + esc(fmtFechaHora(S.respaldo.ultimoManual())) : 'En este equipo todavía no has guardado un respaldo.'}${S.sync && S.sync.estado().cfg ? ' Como está sincronizado, la PC también guarda los respaldos automáticos.' : ''}</p>`}
+    ${window.rifasNativo && window.rifasNativo.buscarActualizacion ? `<div class="row" style="margin-top:10px"><span class="muted grow" style="font-size:12px">Programa versión ${esc(S.version||'')}</span><button class="btn sm" id="rBuscarAct">Buscar actualización</button></div>` : ''}
     <div class="acts"><button class="btn" data-x>Cerrar</button></div>`);
+  const ya = sh.querySelector('#rAutoYa');
+  if(ya) ya.onclick = async () => {
+    ya.disabled = true;
+    try{ await S.respaldo.auto.ahora(); sh.querySelector('#rAutoTxt').innerHTML = textoAuto(); toast('Respaldo guardado'); }
+    catch(e){ toast('No se pudo guardar el respaldo'); }
+    ya.disabled = false;
+  };
+  const ba = sh.querySelector('#rBuscarAct');
+  if(ba) ba.onclick = () => revisarActualizacion(true);
+  const dir = sh.querySelector('#rAutoDir');
+  if(dir) dir.onclick = () => S.respaldo.auto.abrirCarpeta();
   sh.querySelector('#rExp').onclick = async () => {
     const datos = await S.respaldo.exportar();
     const f = new Date().toISOString().slice(0,10);
-    if(S.downloads){ try{ const ok = await S.downloads.save({ filename:`respaldo-rifas-${f}.json`, data: JSON.stringify(datos, null, 1) }); if(ok !== false) sh.querySelector('#rMsg').textContent = 'Respaldo guardado.'; return; }catch(e){} }
+    if(S.downloads){ try{ const ok = await S.downloads.save({ filename:`respaldo-rifas-${f}.json`, data: JSON.stringify(datos, null, 1) }); if(ok !== false){ sh.querySelector('#rMsg').textContent = 'Respaldo guardado.'; S.respaldo.marcarManual(); render(); } return; }catch(e){} }
     copiar(JSON.stringify(datos));
   };
   sh.querySelector('#rImp').onchange = async ev => {
@@ -781,6 +1026,7 @@ function ventanaRespaldo(){
       const datos = JSON.parse(await file.text());
       if(!await confirmar(`¿Cargar el respaldo? Se agregan o reemplazan ${datos.docs ? datos.docs.length : 0} registros. Lo que no está en el respaldo se queda igual.`, 'Cargar')) return;
       const n = await S.respaldo.importar(datos);
+      await registrar('respaldo', null, null, `Respaldo cargado (${n} registros)`, null);
       toast(`Respaldo cargado (${n} registros)`);
     }catch(e){ toast('Ese archivo no es un respaldo válido'); }
   };
@@ -788,15 +1034,20 @@ function ventanaRespaldo(){
 
 // ---------- eventos ----------
 document.addEventListener('click', async ev => {
-  const t = ev.target.closest('button, [data-abrir]'); if(!t) return;
+  const t = ev.target.closest('button, [data-abrir], [data-cli]'); if(!t) return;
   const r = rifa();
   if(t.id==='bNueva' || t.id==='bNueva2') return formRifa();
-  if(t.id==='bRespaldo') return ventanaRespaldo();
+  if(t.id==='bRespaldo' || t.id==='bRespaldo2') return ventanaRespaldo();
+  if(t.id==='bActualizar') return ventanaActualizacion();
   if(t.id==='bTasas') return ventanaTasas();
   if(t.id==='bSync') return ventanaSync();
+  if(t.id==='bHist') return ventanaHistorial(S.rifaId);
   if(t.id==='bImagen' || t.id==='bImagen2') return ventanaImagen(rifa());
   if(t.dataset.abrir) return abrirRifa(t.dataset.abrir);
-  if(t.id==='bAtras') return salirRifa();
+  if(t.id==='bAtras'){ if(!S.rifaId){ S.vista='rifas'; render(); return window.scrollTo(0,0); } return salirRifa(); }
+  if(t.id==='bClientes'){ S.vista='clientes'; cargarStatsLista(); render(); return window.scrollTo(0,0); }
+  if(t.dataset.filcli){ S.filtroCli = t.dataset.filcli; return render(); }
+  if(t.dataset.cli !== undefined) return ventanaCliente(S._cliVista[Number(t.dataset.cli)]);
   if(t.id==='bEditar') return formRifa(r);
   if(t.dataset.tab){ S.tab = t.dataset.tab; S.multi=false; S.sel.clear(); return render(); }
   if(t.dataset.fil){ S.filtro = t.dataset.fil; return render(); }
@@ -818,7 +1069,11 @@ document.addEventListener('click', async ev => {
     return formAbono(r, c.nums.filter(d => d.debe > EPS), `${c.nombre} · debe ${money(c.debe,r)}`);
   }
   if(t.id==='bCopLibres') return copiar(textoLibres(r));
+  if(t.id==='bCobrar') return ventanaCobrar(r);
+  if(t.dataset.compro !== undefined) return ventanaComprobante(r, claveComp(S._compVista[Number(t.dataset.compro)]));
   if(t.id==='bCSV') return exportarCSV(r);
+  if(t.id==='bAddCosto') return agregarCosto(r);
+  if(t.dataset.quitarcosto) return quitarCosto(r, t.dataset.quitarcosto);
   if(t.dataset.vergan){
     const pid = t.dataset.vergan; const p = r.premios.find(p => p.id === pid);
     const v = document.querySelector(`[data-numgan="${pid}"]`).value.trim(); const n = parseInt(v, 10);
@@ -844,14 +1099,24 @@ document.addEventListener('click', async ev => {
   }
   if(t.dataset.quitargan){
     if(!await confirmar('¿Borrar el resultado de este premio?', 'Borrar', true)) return;
+    const prev = r.premios.find(p => p.id === t.dataset.quitargan);
     const premios = r.premios.map(p => p.id === t.dataset.quitargan ? { ...p, ganador:null } : p);
-    try{ await S.db.doc(`rifas/${r.id}`).update({ premios, estado:'activa' }); }catch(e){ toast(errorTxt(e)); }
+    try{
+      await S.db.doc(`rifas/${r.id}`).update({ premios, estado:'activa' });
+      if(prev && prev.ganador) await registrar('borrar-ganador', r, prev.ganador.numero, `${prev.nombre}: borrado el resultado (${fmtNum(r,prev.ganador.numero)})`, { tipo:'ganador', premioId:prev.id, ganador:prev.ganador });
+    }catch(e){ toast(errorTxt(e)); }
   }
+});
+document.addEventListener('change', ev => {
+  if(ev.target.id !== 'cMoneda') return;
+  const r = rifa(); const m = ev.target.value; const ti = $('#cTasa');
+  ti.hidden = m === r.moneda;
+  const t = tasaEntre(m, r.moneda); ti.value = m === r.moneda ? '' : (t ? +t.toFixed(6) : '');
 });
 document.addEventListener('input', ev => {
   const id = ev.target.id;
-  if(id !== 'qNum' && id !== 'qComp') return;
-  if(id==='qNum') S.q = ev.target.value; else S.qComp = ev.target.value;
+  if(id !== 'qNum' && id !== 'qComp' && id !== 'qCli') return;
+  if(id==='qNum') S.q = ev.target.value; else if(id==='qComp') S.qComp = ev.target.value; else S.qCli = ev.target.value;
   const pos = ev.target.selectionStart; render();
   const i = document.getElementById(id); i.focus(); try{ i.setSelectionRange(pos,pos) }catch(e){}
 });
@@ -861,7 +1126,17 @@ document.addEventListener('input', ev => {
 // sync: {estado, alCambiar, configurar, desactivar} o null
 function iniciarApp(db, downloads, respaldo, sync){
   S.iniciado = true; S.db = db; S.downloads = downloads || null; S.respaldo = respaldo || null; S.sync = sync || null;
+  if(S.respaldo){
+    S.respaldo.ultimoManual = () => { try{ return localStorage.getItem('respaldoManual') || ''; }catch(e){ return ''; } };
+    S.respaldo.marcarManual = () => { try{ localStorage.setItem('respaldoManual', nowISO()); }catch(e){} };
+  }
   if(S.sync) S.sync.alCambiar(() => renderTop());
   if(S.db){ S.dbListo = true; render(); iniciarDB(); } else render();
 }
 render();
+
+// Que la rueda del ratón no cambie sin querer un monto o un precio mientras se escribe.
+document.addEventListener('wheel', ev => {
+  const t = ev.target;
+  if(t && t.matches && t.matches('input[type=number]') && document.activeElement === t) t.blur();
+}, { passive: true });
