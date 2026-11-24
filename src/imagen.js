@@ -88,21 +88,20 @@ function dibujarImagen(canvas, r, op){
   if(op.plantilla === 'numeros') dibujarCuadricula(ctx, r, op, T, yCuerpo, 1500);
   else dibujarProgreso(ctx, T, yCuerpo, { pct, vendidos, total, libres, mostrar: op.mostrar });
 
-  // Tarjeta inferior: precio, próximo sorteo y contacto
-  const yT = 1530, hT = 300;
+  // Tarjeta inferior: precio, próximo sorteo y contacto. El contacto se parte en 2 líneas si es largo
+  // (y la tarjeta crece hacia abajo) en vez de cortarse.
+  const mc = medirParrafos(ctx, op.contacto, 900, 700, 42, 30, 2);
+  ctx.font = f(500, 38);
+  const det = prox ? `${prox.fecha ? fmtFecha(prox.fecha) : 'Fecha por anunciar'}${prox.requisito < 100 ? ` · juegas con ${prox.requisito}% abonado` : ''}` : '';
+  const lProx = prox ? partirTexto(ctx, `📅 ${prox.nombre}: ${det}`, 900, 2) : [];
+  const yT = 1530, hT = 300 + (mc.lineas.length > 1 && lProx.length > 1 ? 60 : 0);
   ctx.fillStyle = 'rgba(255,255,255,0.14)'; rectRedondo(ctx, 60, yT, IMG_W-120, hT, 36); ctx.fill();
   ctx.fillStyle = T.texto; ctx.font = f(700, 54);
   ctx.fillText(`💵 ${money(r.precio, r)} por número`, IMG_W/2, yT + 80);
   ctx.font = f(500, 38);
-  if(prox){
-    const det = `${prox.fecha ? fmtFecha(prox.fecha) : 'Fecha por anunciar'}${prox.requisito < 100 ? ` · juegas con ${prox.requisito}% abonado` : ''}`;
-    for(const [i, l] of partirTexto(ctx, `📅 ${prox.nombre}: ${det}`, 900, 2).entries()) ctx.fillText(l, IMG_W/2, yT + 150 + i*48);
-  }
-  if(op.contacto){
-    ctx.font = f(700, 42); ctx.fillStyle = T.acento;
-    ctx.fillText(partirTexto(ctx, op.contacto, 900, 1)[0], IMG_W/2, yT + hT - 30);
-  }
-  return { pct, vendidos, total, libres };
+  lProx.forEach((l, i) => ctx.fillText(l, IMG_W/2, yT + 150 + i*48));
+  if(mc.alto){ ctx.fillStyle = T.acento; pintarParrafos(ctx, mc, IMG_W/2, yT + hT - 30 - (mc.lineas.length - 1) * mc.salto); }
+  return { pct, vendidos, total, libres, cortado: mc.cortado };
 }
 
 function dibujarProgreso(ctx, T, y0, d){
@@ -187,7 +186,7 @@ function ventanaImagen(r, forzar){
   const nativo = window.rifasNativo && window.rifasNativo.guardarImagen;
   const sh = modal(`<h2>Imagen para estados</h2>
     <div class="img-ed">
-      <div class="img-prev"><canvas id="cvImg"></canvas></div>
+      <div><div class="img-prev"><canvas id="cvImg"></canvas></div><div id="iAviso" class="banner alerta" style="margin-top:8px;font-size:13px" hidden></div></div>
       <form id="fImg" class="img-op">
         <label class="f"><span>Diseño</span><div class="seg">
           <label><input type="radio" name="plantilla" value="lanzamiento" ${pref.plantilla==='lanzamiento'?'checked':''}>Lanzamiento</label>
@@ -238,7 +237,12 @@ function ventanaImagen(r, forzar){
     sh.querySelectorAll('[data-solo]').forEach(el => el.style.display = op.plantilla === el.dataset.solo ? '' : 'none');
     sh.querySelectorAll('[data-no]').forEach(el => el.style.display = op.plantilla === el.dataset.no ? 'none' : '');
     // La foto puede tardar en cargar: cuando termine se vuelve a dibujar.
-    dibujarImagen(cv, r, { ...op, alCargar: () => { if(cv.isConnected) redibujar(false); } });
+    const res = dibujarImagen(cv, r, { ...op, alCargar: () => { if(cv.isConnected) redibujar(false); } }) || {};
+    const aviso = sh.querySelector('#iAviso');
+    aviso.hidden = !res.cortado;
+    if(res.cortado) aviso.textContent = op.plantilla === 'lanzamiento' && op.tamano === 'cuadrado'
+      ? '⚠️ El texto no cabe completo en cuadrado (se cortó con “…”). Acórtalo o usa Vertical.'
+      : '⚠️ Hay texto que no cabe completo (se cortó con “…”). Acórtalo un poco.';
     blob = null; clearTimeout(pend);
     // Se prepara el archivo de una vez para que "Compartir" funcione al primer toque en el iPhone.
     pend = setTimeout(() => cv.toBlob(b => { blob = b; }, 'image/png'), 50);
