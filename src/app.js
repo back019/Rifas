@@ -1128,3 +1128,9 @@ function iniciarApp(db, downloads, respaldo, sync){
   if(S.db){ S.dbListo = true; render(); iniciarDB(); } else render();
 }
 render();
+
+// Que la rueda del ratón no cambie sin querer un monto o un precio mientras se escribe.
+document.addEventListener('wheel', ev => {
+  const t = ev.target;
+  if(t && t.matches && t.matches('input[type=number]') && document.activeElement === t) t.blur();
+}, { passive: true });
