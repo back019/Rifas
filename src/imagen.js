@@ -50,6 +50,7 @@ const TEMAS = {
 // Dibuja la imagen en el canvas. op: { plantilla, tema, contarApartados, mostrar ('pct'|'cant'), contacto }
 function dibujarImagen(canvas, r, op){
   if(op.plantilla === 'lanzamiento') return dibujarFlyer(canvas, r, op); // ver flyer.js
+  if(op.plantilla === 'participantes') return dibujarParticipantes(canvas, r, op); // ver participantes.js
   canvas.width = IMG_W; canvas.height = IMG_H;
   const ctx = canvas.getContext('2d');
   const T = TEMAS[op.tema] || TEMAS.morado;
@@ -187,20 +188,35 @@ function ventanaImagen(r, forzar){
   // Si todavía no se ha vendido nada, se propone el flyer de lanzamiento.
   const base = S.raw.size === 0 && !(r.imagen && r.imagen.manual) ? 'lanzamiento' : 'progreso';
   const pref = { plantilla:base, tema:'dorado', contarApartados:true, mostrar:'pct', contacto: local.contacto || '',
-    tamano:'vertical', pagos: local.pagos || '', frase:'¡Aparta el tuyo!', extra:'', whatsapp: local.whatsapp || '', qr:false, otrasMonedas:true, ...elegido, ...(forzar || {}) };
+    tamano:'vertical', pagos: local.pagos || '', frase:'¡Aparta el tuyo!', extra:'', whatsapp: local.whatsapp || '', qr:false, otrasMonedas:true,
+    filtroPremio:'', formatoNombre:'inicial', conEstado:true, ...elegido, ...(forzar || {}) };
+  if(pref.filtroPremio && !r.premios.some(p => p.id === pref.filtroPremio)) pref.filtroPremio = '';
   const nativo = window.rifasNativo && window.rifasNativo.guardarImagen;
   const sh = modal(`<h2>Imagen para estados</h2>
     <div class="img-ed">
-      <div><div class="img-prev"><canvas id="cvImg"></canvas></div><div id="iAviso" class="banner alerta" style="margin-top:8px;font-size:13px" hidden></div></div>
+      <div><div class="img-prev"><canvas id="cvImg"></canvas></div>
+        <div class="row" id="iPag" data-solo="participantes" style="justify-content:center;margin-top:8px"><button type="button" class="btn sm" id="iPrev">◀</button><b id="iPagTxt"></b><button type="button" class="btn sm" id="iNext">▶</button></div>
+        <div id="iAviso" class="banner alerta" style="margin-top:8px;font-size:13px" hidden></div></div>
       <form id="fImg" class="img-op">
         <label class="f"><span>Diseño</span><div class="seg">
           <label><input type="radio" name="plantilla" value="lanzamiento" ${pref.plantilla==='lanzamiento'?'checked':''}>Lanzamiento</label>
           <label><input type="radio" name="plantilla" value="progreso" ${pref.plantilla==='progreso'?'checked':''}>Progreso</label>
-          <label><input type="radio" name="plantilla" value="numeros" ${pref.plantilla==='numeros'?'checked':''}>Números</label></div></label>
+          <label><input type="radio" name="plantilla" value="numeros" ${pref.plantilla==='numeros'?'checked':''}>Números</label>
+          <label><input type="radio" name="plantilla" value="participantes" ${pref.plantilla==='participantes'?'checked':''}>Participantes</label></div></label>
+        <label class="f" data-solo="lanzamiento participantes"><span>Tamaño</span><div class="seg">
+          <label><input type="radio" name="tamano" value="vertical" ${pref.tamano!=='cuadrado'?'checked':''}>Vertical (estados)</label>
+          <label><input type="radio" name="tamano" value="cuadrado" ${pref.tamano==='cuadrado'?'checked':''}>Cuadrado (publicación)</label></div></label>
+        <div data-solo="participantes">
+          <label class="f"><span>Quiénes salen</span><select name="filtroPremio">
+            <option value="">Todos los números vendidos</option>
+            ${premiosOrden(r).map(p => `<option value="${esc(p.id)}" ${pref.filtroPremio===p.id?'selected':''}>Solo los que juegan: ${esc(p.nombre)} (${p.requisito}%)</option>`).join('')}</select></label>
+          <label class="f"><span>Nombres</span><select name="formatoNombre">
+            <option value="inicial" ${pref.formatoNombre!=='completo'?'selected':''}>Nombre + inicial del apellido (Ana P.)</option>
+            <option value="completo" ${pref.formatoNombre==='completo'?'selected':''}>Nombre completo</option></select></label>
+          <label class="row" style="margin-bottom:8px"><input type="checkbox" name="conEstado" ${pref.conEstado?'checked':''}> Marcar ✅ pagado / ⏳ abonando</label>
+          <p class="muted" style="font-size:12px;margin:0 0 10px">Nunca salen teléfonos ni montos. Si no caben todos, se hacen varias páginas.</p>
+        </div>
         <div data-solo="lanzamiento">
-          <label class="f"><span>Tamaño</span><div class="seg">
-            <label><input type="radio" name="tamano" value="vertical" ${pref.tamano!=='cuadrado'?'checked':''}>Vertical (estados)</label>
-            <label><input type="radio" name="tamano" value="cuadrado" ${pref.tamano==='cuadrado'?'checked':''}>Cuadrado (publicación)</label></div></label>
           <label class="f"><span>Responsable (quién organiza)</span><textarea name="responsable" rows="1" class="crece" placeholder="Nombre y, si quieres, cédula o teléfono (Enter para otra línea)">${esc(r.responsable || '')}</textarea></label>
           <div class="f"><span class="muted" style="font-size:13px;display:block;margin-bottom:4px">Foto del premio</span>
             <span class="muted" style="font-size:12px;display:block;margin-bottom:6px">El producto, o billetes si es dinero. Sin foto, la app dibuja el premio.</span>
@@ -217,13 +233,15 @@ function ventanaImagen(r, forzar){
           <option value="pct" ${pref.mostrar!=='cant'?'selected':''}>Porcentaje (50%)</option>
           <option value="cant" ${pref.mostrar==='cant'?'selected':''}>Cantidad (50 de 100)</option></select></label>
         <label class="f"><span>Color</span><select name="tema">${Object.keys(TEMAS).map(k=>`<option value="${k}" ${pref.tema===k?'selected':''}>${TEMAS[k].nombre || (k[0].toUpperCase()+k.slice(1))}</option>`).join('')}</select></label>
-        <label class="row" data-no="lanzamiento" style="margin-bottom:10px"><input type="checkbox" name="contarApartados" ${pref.contarApartados?'checked':''}> Contar los apartados como vendidos</label>
-        <label class="f"><span>Texto de contacto (opcional)</span><textarea name="contacto" rows="1" class="crece" placeholder="Escríbeme al 0414-1234567">${esc(pref.contacto)}</textarea></label>
+        <label class="row" data-no="lanzamiento participantes" style="margin-bottom:10px"><input type="checkbox" name="contarApartados" ${pref.contarApartados?'checked':''}> Contar los apartados como vendidos</label>
+        <label class="f" data-no="participantes"><span>Texto de contacto (opcional)</span><textarea name="contacto" rows="1" class="crece" placeholder="Escríbeme al 0414-1234567">${esc(pref.contacto)}</textarea></label>
       </form>
     </div>
     <div class="acts">
       <button class="btn" data-x>Cerrar</button>
       <button class="btn" id="iTexto" data-solo="lanzamiento">📝 Texto para pegar</button>
+      <button class="btn" id="iTextoP" data-solo="participantes">📝 Copiar lista en texto</button>
+      <button class="btn" id="iTodas" data-solo="participantes" hidden>Todas las páginas</button>
       ${nativo ? '<button class="btn" id="iCopiar">Copiar</button><button class="btn pri" id="iGuardar">Guardar imagen</button>'
                : '<button class="btn" id="iDescargar">Descargar</button><button class="btn pri" id="iCompartir">Compartir</button>'}
     </div>`);
@@ -235,14 +253,22 @@ function ventanaImagen(r, forzar){
     plantilla: form.plantilla.value, tema: form.tema.value, mostrar: form.mostrar.value,
     contarApartados: form.contarApartados.checked, contacto: form.contacto.value.trim(),
     tamano: form.tamano.value, pagos: form.pagos.value.trim(), frase: form.frase.value.trim(), extra: form.extra.value.trim(),
-    whatsapp: form.whatsapp.value.trim(), qr: form.qr.checked, otrasMonedas: form.otrasMonedas.checked
+    whatsapp: form.whatsapp.value.trim(), qr: form.qr.checked, otrasMonedas: form.otrasMonedas.checked,
+    filtroPremio: form.filtroPremio.value, formatoNombre: form.formatoNombre.value, conEstado: form.conEstado.checked
   });
+  let pagina = 0, nPaginas = 1;
   const redibujar = (manual) => {
     const op = opciones();
-    sh.querySelectorAll('[data-solo]').forEach(el => el.style.display = op.plantilla === el.dataset.solo ? '' : 'none');
-    sh.querySelectorAll('[data-no]').forEach(el => el.style.display = op.plantilla === el.dataset.no ? 'none' : '');
+    sh.querySelectorAll('[data-solo]').forEach(el => el.style.display = el.dataset.solo.split(' ').includes(op.plantilla) ? '' : 'none');
+    sh.querySelectorAll('[data-no]').forEach(el => el.style.display = el.dataset.no.split(' ').includes(op.plantilla) ? 'none' : '');
     // La foto puede tardar en cargar: cuando termine se vuelve a dibujar.
-    const res = dibujarImagen(cv, r, { ...op, alCargar: () => { if(cv.isConnected) redibujar(false); } }) || {};
+    const res = dibujarImagen(cv, r, { ...op, pagina, alCargar: () => { if(cv.isConnected) redibujar(false); } }) || {};
+    // Páginas de la lista de participantes
+    nPaginas = res.paginas || 1; if(res.pagina !== undefined) pagina = res.pagina;
+    sh.querySelector('#iPag').style.display = op.plantilla === 'participantes' && nPaginas > 1 ? '' : 'none';
+    sh.querySelector('#iPagTxt').textContent = `Página ${pagina + 1} de ${nPaginas}`;
+    sh.querySelector('#iPrev').disabled = pagina === 0; sh.querySelector('#iNext').disabled = pagina >= nPaginas - 1;
+    sh.querySelector('#iTodas').hidden = !(op.plantilla === 'participantes' && nPaginas > 1);
     const aviso = sh.querySelector('#iAviso');
     aviso.hidden = !res.cortado;
     if(res.cortado) aviso.textContent = op.plantilla === 'lanzamiento' && op.tamano === 'cuadrado'
@@ -293,9 +319,30 @@ function ventanaImagen(r, forzar){
     redibujar(false);
   };
   sh.querySelector('#iTexto').onclick = () => ventanaAnuncio(r, opciones());
+  sh.querySelector('#iTextoP').onclick = () => copiar(textoParticipantes(r, opciones()));
+  sh.querySelector('#iPrev').onclick = () => { if(pagina > 0){ pagina--; redibujar(false); } };
+  sh.querySelector('#iNext').onclick = () => { if(pagina < nPaginas - 1){ pagina++; redibujar(false); } };
+  form.addEventListener('change', ev => { if(['plantilla','filtroPremio','tamano'].includes(ev.target.name)){ pagina = 0; redibujar(true); } });
+  // Todas las páginas de una vez: en la PC se guardan en una carpeta; en el teléfono se comparten juntas.
+  sh.querySelector('#iTodas').onclick = async () => {
+    const op = opciones(), archivos = [];
+    for(let i = 0; i < nPaginas; i++){
+      const c = document.createElement('canvas'); dibujarParticipantes(c, r, { ...op, pagina: i });
+      archivos.push({ nombre: nombreArchivo().replace(/\.png$/, `-${i + 1}-de-${nPaginas}.png`), blob: await new Promise(res => c.toBlob(res, 'image/png')) });
+    }
+    if(window.rifasNativo && window.rifasNativo.guardarImagenes){
+      try{ const n = await window.rifasNativo.guardarImagenes(await Promise.all(archivos.map(async a => ({ nombre: a.nombre, bytes: new Uint8Array(await a.blob.arrayBuffer()) })))); if(n) toast(`${n} imágenes guardadas`); }
+      catch(e){ toast('No se pudieron guardar las imágenes'); }
+      return;
+    }
+    const files = archivos.map(a => new File([a.blob], a.nombre, { type:'image/png' }));
+    if(navigator.canShare && navigator.canShare({ files })){
+      try{ await navigator.share({ files, title: r.nombre }); }catch(e){ if(e && e.name !== 'AbortError') toast('No se pudo compartir'); }
+    } else archivos.forEach(a => descargarBlob(a.blob, a.nombre));
+  };
   activarCrecer(sh);
 
-  const nombreArchivo = () => `${form.plantilla.value === 'lanzamiento' ? 'flyer' : 'estado'}-${r.nombre.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')}.png`;
+  const nombreArchivo = () => `${({ lanzamiento:'flyer', participantes:'participantes' })[form.plantilla.value] || 'estado'}-${r.nombre.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')}.png`;
   const conBlob = async () => blob || await new Promise(res => cv.toBlob(res, 'image/png'));
 
   const bG = sh.querySelector('#iGuardar');

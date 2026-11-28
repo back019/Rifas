@@ -120,4 +120,21 @@ function montoEnTexto(t){
   return { monto, moneda };
 }
 
-if(typeof module === 'object' && module.exports) module.exports = { uid, EPS, telWa, normRifa, totalCostos, ganancia, premiosOrden, premioMayor, montoEnTexto, proximoPremio, info, juega, tieneChoque, calcStats, repartir, agruparCompradores };
+// Nombre para publicar la lista de participantes. 'inicial': nombre + inicial del apellido ("Ana P.");
+// 'completo': el nombre tal como se escribió. Nunca incluye teléfonos ni montos.
+function nombreCorto(nombre, formato){
+  const partes = String(nombre || '').trim().split(/\s+/).filter(Boolean);
+  if(!partes.length) return '';
+  if(formato === 'completo') return partes.join(' ');
+  const may = w => w.charAt(0).toLocaleUpperCase('es') + w.slice(1);
+  if(partes.length === 1) return may(partes[0]);
+  return may(partes[0]) + ' ' + partes[1].charAt(0).toLocaleUpperCase('es') + '.';
+}
+// Parte una lista en páginas de 'porPagina' elementos (siempre al menos una página, aunque esté vacía).
+function paginar(lista, porPagina){
+  const n = Math.max(1, porPagina|0), out = [];
+  for(let i = 0; i < lista.length; i += n) out.push(lista.slice(i, i + n));
+  return out.length ? out : [[]];
+}
+
+if(typeof module === 'object' && module.exports) module.exports = { uid, EPS, telWa, normRifa, totalCostos, ganancia, premiosOrden, premioMayor, montoEnTexto, nombreCorto, paginar, proximoPremio, info, juega, tieneChoque, calcStats, repartir, agruparCompradores };

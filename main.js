@@ -154,6 +154,21 @@ ipcMain.handle('instalar-actualizacion', () => {
   });
 });
 
+// Guardar varias imágenes (por ejemplo todas las páginas de participantes) en la carpeta que elijas.
+ipcMain.handle('guardar-imagenes', async (ev, lista) => {
+  const win = BrowserWindow.fromWebContents(ev.sender);
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+    title: 'Elige la carpeta donde guardar las imágenes', defaultPath: app.getPath('pictures'),
+    properties: ['openDirectory', 'createDirectory']
+  });
+  if (canceled || !filePaths || !filePaths[0]) return 0;
+  let n = 0;
+  for (const it of (Array.isArray(lista) ? lista : [])) {
+    await fs.writeFile(path.join(filePaths[0], String(it.nombre).replace(/[\\/:*?"<>|]/g, '-')), Buffer.from(it.bytes)); n++;
+  }
+  return n;
+});
+
 // Copiar la imagen al portapapeles (para pegarla en WhatsApp Web con Ctrl+V).
 ipcMain.handle('copiar-imagen', async (ev, bytes) => {
   clipboard.writeImage(nativeImage.createFromBuffer(Buffer.from(bytes)));

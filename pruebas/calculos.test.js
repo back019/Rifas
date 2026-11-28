@@ -192,3 +192,23 @@ test('montoEnTexto: un producto con números no es dinero', () => {
   assert.equal(C.montoEnTexto('Premio mayor'), null);
   assert.equal(C.montoEnTexto(''), null);
 });
+
+test('nombreCorto: nombre + inicial del apellido para publicar la lista', () => {
+  assert.equal(C.nombreCorto('  ana   pérez gómez ', 'inicial'), 'Ana P.');
+  assert.equal(C.nombreCorto('José', 'inicial'), 'José');
+  assert.equal(C.nombreCorto('maría josé rodríguez', 'inicial'), 'María J.');
+  assert.equal(C.nombreCorto('  ana  pérez ', 'completo'), 'ana pérez');
+  assert.equal(C.nombreCorto('', 'inicial'), '');
+  assert.equal(C.nombreCorto(null, 'completo'), '');
+});
+
+test('paginar: parte la lista de participantes en páginas', () => {
+  const cien = Array.from({ length: 100 }, (_, i) => i);
+  const pags = C.paginar(cien, 50);
+  assert.equal(pags.length, 2);
+  assert.equal(pags[0].length, 50);
+  assert.deepEqual(pags[1].slice(-1), [99]);
+  assert.equal(C.paginar(cien.slice(0, 39), 50).length, 1);
+  assert.equal(C.paginar(cien.slice(0, 51), 24).length, 3);
+  assert.deepEqual(C.paginar([], 50), [[]], 'sin participantes igual hay una página');
+});

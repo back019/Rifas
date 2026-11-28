@@ -1,9 +1,10 @@
 {
-  "version": "1.1.7",
+  "version": "1.1.8",
   "fecha": "2026-11-24",
   "descarga": "https://github.com/back019/Rifas/releases/latest",
   "notas": [
-    "Ventana integrada: ya no sale la barra gris de Windows. Los botones de minimizar, maximizar y cerrar quedan dentro del encabezado de la app, con sus mismos colores (claro u oscuro).",
-    "La ventana se mueve arrastrando el encabezado, y con doble clic se maximiza o se restaura."
+    "Nueva imagen \"Participantes\" (🖼️ Imagen): la lista número → nombre para publicar en estados, ordenada y en columnas.",
+    "Puedes elegir todos los vendidos o solo los que juegan un premio, nombre completo o \"Nombre + inicial\", y marcar ✅ pagado / ⏳ abonando. Nunca muestra teléfonos ni montos.",
+    "Si no caben en una imagen se hacen varias páginas (1/2, 2/2) y puedes guardarlas o compartirlas todas juntas. También \"Copiar lista en texto\" para WhatsApp."
   ]
 }
